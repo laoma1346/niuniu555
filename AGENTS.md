@@ -18,7 +18,7 @@
 | Phase 1 | 基础架构与数据层 | ✅ 完成 | 存档、输入、状态机、对象池、属性系统 |
 | Phase 2 | 角色基础与移动 | ⚠️ 基本完成 | 移动✅、闪避✅、钩索✅、**角色状态机** ⏳ |
 | Phase 3 | 战斗核心系统 | ⚠️ 基本完成 | 武器✅、连招✅、伤害✅、**准星/锁定** ⏳、**派生攻击** ⏳ |
-| Phase 4 | 敌人与 AI | ⏳ 待开发 | 敌人基类、行为树、生成器、掉落系统 |
+| Phase 4 | 敌人与 AI | 🚧 进行中 | 敌人基类✅、行为树⏳、生成器⏳、掉落系统⏳ |
 | Phase 5 | 装备与背包系统 | ⏳ 待开发 | 装备数据、随机词条、套装系统、背包 |
 | Phase 6 | 关卡与流程 | ⏳ 待开发 | 房间/节点系统、地图生成、节点交互 |
 | Phase 7 | 经济与成长系统 | ⏳ 待开发 | 金币、神格碎片、技能树、局内成长 |
@@ -177,11 +177,26 @@
 
 **目标**: 构建敌人与战斗环境
 
-### 4.1 敌人基础架构
+### 4.1 敌人基础架构 (✅ 已完成 - 2026-03-07)
 
-- 敌人基类（继承于统一Entity基类，与Player共享属性接口）
-- 敌人状态机（Spawn/Idle/Patrol/Chase/Attack/Hit/Return/Dead）
-- 敌人配置数据（ScriptableObject：模型/技能组/掉落表/AI参数）
+| 组件 | 状态 | 主要文件 | 功能要点 |
+|------|------|----------|----------|
+| **EnemyTypes** | ✅ 完成 | `EnemySystem/EnemyTypes.h` | 敌人类型/状态/阵营枚举，AI感知配置结构 |
+| **EnemyDataAsset** | ✅ 完成 | `EnemySystem/EnemyDataAsset.h/cpp` | 敌人数据资产，支持蓝图配置属性/AI/特效/音效 |
+| **DropTableDataAsset** | ✅ 完成 | `EnemySystem/DropTableDataAsset.h/cpp` | 掉落表数据资产，支持权重随机和保底机制 |
+| **EnemyStateMachineComponent** | ✅ 完成 | `EnemySystem/EnemyStateMachineComponent.h/cpp` | 敌人状态机组件，管理Spawn/Idle/Patrol/Chase/Attack/Hit/Stun/Return/Dead状态 |
+| **EnemyBase** | ✅ 完成 | `EnemySystem/EnemyBase.h/cpp` | 敌人基类，整合属性系统+状态机+受击反馈，实现IDamageableInterface |
+
+**功能验证状态** (2026-03-07):
+- ✅ 敌人数据资产（Data Asset）正确创建和配置
+- ✅ 敌人蓝图（BP_TestEnemy）从EnemyBase继承
+- ✅ 血量初始化（HP:100/100正确显示，非0/0）
+- ✅ 攻击扣血（血量减少，日志输出正常）
+- ✅ 状态机切换（Idle → Hit → Idle自动恢复）
+- ✅ 受击反馈（闪白/击退/音效）
+- ✅ 死亡流程（血量归零 → Dead状态 → 尸体消失）
+
+**Debug Log**: 详见「开发规范与常见陷阱」章节，记录了函数名不匹配、蓝图覆盖、血量初始化等关键问题及解决方案。
 
 ### 4.2 AI行为树系统
 
@@ -465,6 +480,12 @@ Source/niuniu555/
     ├── DamageCalculator.h/cpp
     ├── DamageableInterface.h
     └── HitReactionComponent.h/cpp
+└── EnemySystem/
+    ├── EnemyTypes.h
+    ├── EnemyDataAsset.h/cpp
+    ├── DropTableDataAsset.h/cpp
+    ├── EnemyStateMachineComponent.h/cpp
+    └── EnemyBase.h/cpp
 ```
 
 ---
@@ -509,8 +530,8 @@ Source/niuniu555/
 
 ---
 
-*最后更新: 2026-03-06*  
-*开发阶段: Phase 3 进行中（战斗核心系统）*
+*最后更新: 2026-03-07*  
+*开发阶段: Phase 4 进行中（敌人与AI系统 - 4.1基础架构完成）*
 
 
 ---
@@ -542,6 +563,164 @@ IWeaponInterface::Execute_OnEquipped(NewWeapon, OwnerCharacter);
 
 **经验总结**: 
 所有 `BlueprintNativeEvent` 接口函数，无论在类外部还是类内部调用，都必须使用 `IInterface::Execute_函数名(对象, 参数)` 形式。
+
+### 2026-03-07 - EnemyBase 血量显示 0/0 Bug 修复
+
+**问题描述**: 
+测试时敌人头顶显示 `HP:0/0`，但数据资产中已设置生命值100。
+
+**根本原因**: 
+`EnemyBase.cpp` 中的 `UpdateAttributeStats()` 函数里，属性设置代码被注释：
+```cpp
+// AttributeComp->SetMaxHealth(Health);
+// AttributeComp->SetCurrentHealth(Health);
+```
+导致 AttributeComponent 没有从数据资产获取初始值。
+
+**修复文件**: 
+- `EnemyBase.cpp`: 
+  - `UpdateAttributeStats()`: 启用 `SetBaseValue()` 调用，正确设置 MaxHealth 和 CurrentHealth
+  - `GetCurrentHealth_Implementation()`: 启用 `AttributeComp->GetHealth()`
+  - `GetMaxHealth_Implementation()`: 启用 `AttributeComp->GetMaxHealth()`
+  - `GetDefense_Implementation()`: 改用 `AttributeComp->GetDefense()`
+  - `TakeInterfaceDamage_Implementation()`: 启用 `ModifyHealth()` 应用伤害
+  - `Heal_Implementation()`: 启用 `ModifyHealth()` 应用治疗
+
+**修复详情**:
+```cpp
+// 设置最大生命值（基础值）
+AttributeComp->SetBaseValue(EAttributeType::MaxHealth, Health);
+// 设置当前生命值 = 最大生命值（满血初始化）
+AttributeComp->SetBaseValue(EAttributeType::Health, Health);
+```
+
+**经验总结**: 
+C++开发时临时注释的代码在提交前必须恢复，或使用 `#if 0` 明确标记为临时禁用。
+
+### 2026-03-07 - 敌人受击反馈系统修复（最终版）
+
+**问题描述**: 
+1. 攻击命中后血量不减少（始终显示HP:100/100）
+2. 状态机未进入Hit状态（无受击硬直）
+3. 无闪白、无击退、无音效（HitReactionComponent未触发）
+4. **根因**: `IsAlive()` 检查 `GetCurrentHealth() > 0`，但 CurrentHealth 初始值为 0，导致 `TakeInterfaceDamage` 提前返回
+
+**根本原因**: 
+1. `AttributeComp->GetHealth()` 初始返回 0（未正确初始化 CurrentHealth）
+2. `IsAlive()` 返回 false，攻击逻辑在入口处直接 return
+3. 未执行 `ModifyHealth`、`PlayHitReaction`、`StartHit`
+
+**修复文件**: 
+- `EnemyBase.cpp`:
+  - `BeginPlay()`: 添加**强制血量初始化**逻辑（关键修复！）
+  - 如果 CurrentHealth <= 0，强制设置为 MaxHealth（默认100）
+  - 添加详细的血量检查日志
+
+**修复详情**:
+```cpp
+// ===== 关键修复：确保血量不为0 =====
+if (AttributeComp)
+{
+    float CurrentHealth = AttributeComp->GetHealth();
+    float MaxHealth = AttributeComp->GetMaxHealth();
+    
+    // 如果当前血量为0或未初始化
+    if (CurrentHealth <= 0.0f)
+    {
+        if (MaxHealth <= 0.0f)
+        {
+            MaxHealth = 100.0f;
+            AttributeComp->SetBaseValue(EAttributeType::MaxHealth, MaxHealth);
+        }
+        
+        // 关键：设置当前血量 = 最大生命值
+        AttributeComp->SetBaseValue(EAttributeType::Health, MaxHealth);
+        UE_LOG(LogTemp, Warning, TEXT("[EnemyBase] 血量强制初始化为:%.0f"), MaxHealth);
+    }
+}
+// ====================================
+```
+
+**验证日志**（修复后预期输出）:
+```
+[EnemyBase] XXX 血量检查 - 当前:0 最大:0      ← 发现未初始化
+[EnemyBase] XXX 血量强制初始化为:100          ← 强制修复
+[EnemyBase] XXX 初始化完成 - 最终血量:100/100  ← 验证成功
+[EnemyBase] TakeDamage被调用, 原始伤害:171   ← 攻击命中
+[EnemyBase] 血量变化: 100 -> 70               ← 扣血成功！
+[EnemyStateMachine] Idle -> Hit               ← 状态切换成功！
+```
+
+**经验总结**: 
+1. **防御性编程**: 在关键检查点（如IsAlive）前确保数据已初始化
+2. **详细日志**: 在初始化流程中添加检查点日志，快速定位问题
+3. **根因分析**: 从现象（不扣血）→ 检查条件（IsAlive）→ 追踪数据来源（GetHealth）
+
+### 2026-03-07 - 敌人受击反馈系统修复（紧急最终版）
+
+**问题描述**: 
+1. 攻击命中后血量不减少（始终显示HP:100/100）
+2. 状态机未进入Hit状态（无受击硬直）
+3. 无闪白、无击退、无音效（HitReactionComponent未触发）
+4. **关键证据**: `[EnemyBase] TakeDamage被调用` **日志完全未出现**
+
+**最终根因**: 
+**蓝图覆盖了接口函数！** `TakeInterfaceDamage` 声明为 `BlueprintNativeEvent`，`BP_TestEnemy` 蓝图中实现了空版本，导致 C++ 的 `_Implementation` 函数**永不执行**。
+
+```
+调用链断裂：
+WeaponBase::Attack → IDamageableInterface::Execute_TakeInterfaceDamage
+                              ↓
+                    BP_TestEnemy.TakeInterfaceDamage (蓝图空实现)
+                              ↓
+                         直接返回
+                              ↓
+                    C++ TakeInterfaceDamage_Implementation 被跳过！
+```
+
+**修复方案**（采用方案A-强制C++执行）：
+- `EnemyBase.h`: `BlueprintNativeEvent` → `BlueprintCallable`（禁止蓝图覆盖）
+- `EnemyBase.cpp`: 删除 `_Implementation` 后缀，改为普通函数实现
+- 添加 **【强制日志】** 作为函数第一行，确保能追踪调用
+
+**修复详情**:
+```cpp
+// EnemyBase.h - 禁止蓝图覆盖，强制走C++
+UFUNCTION(BlueprintCallable, Category = "伤害接口")
+float TakeInterfaceDamage(const FHitInfo& HitInfo);
+
+// EnemyBase.cpp - 第一行添加强制日志
+float AEnemyBase::TakeInterfaceDamage(const FHitInfo& HitInfo)
+{
+    UE_LOG(LogTemp, Warning, TEXT("【EnemyBase扣血函数进入】%s 伤害:%.0f"), ...);
+    // ...
+}
+```
+
+**替代方案**（如果必须保留蓝图扩展性）：
+在 `BP_TestEnemy` 蓝图中：
+```
+Event Take Interface Damage (Hit Info)
+  ↓
+// 必须调用父类！否则C++逻辑不执行
+Parent: Take Interface Damage(Hit Info)
+  ↓
+// 蓝图自定义逻辑...
+```
+
+**验证日志**（修复后预期输出）:
+```
+【EnemyBase扣血函数进入】BP_TestEnemy 伤害:110, 当前血量:100, IsAlive:1
+【EnemyBase】BP_TestEnemy 准备扣血: 100 - 110
+【EnemyBase】BP_TestEnemy 血量变化: 100 -> -10
+【EnemyBase】BP_TestEnemy 进入受击状态
+[EnemyStateMachine] BP_TestEnemy - 状态转换: Idle -> Hit
+```
+
+**经验总结**: 
+1. **BlueprintNativeEvent 陷阱**: 允许蓝图覆盖的接口函数，如果蓝图实现为空或不调用父类，C++实现会被完全跳过
+2. **强制日志验证**: 在关键函数第一行添加 `UE_LOG(Warning)`，用于验证函数是否被调用
+3. **接口设计原则**: 对于核心逻辑（如扣血、死亡），优先使用 `BlueprintCallable` 禁止覆盖，或通过 `Execute_` 强制调用C++实现
 
 ---
 
@@ -764,3 +943,221 @@ if (bImplementsInterface)
     IDamageableInterface::Execute_TakeDamage(HitActor, HitInfo);
 }
 ```
+
+
+---
+
+## 开发规范与常见陷阱 (Debug Log)
+
+### 1. C++接口与蓝图交互规范
+
+#### ❌ 错误: 函数名不匹配导致接口调用失效
+
+**现象**: WeaponBase调用`TakeDamage`，EnemyBase实现`TakeInterfaceDamage`，导致扣血逻辑被跳过
+
+**规范**: 接口函数名必须**完全一致**（区分大小写），建议使用`Execute_`前缀调用时仔细检查拼写
+
+**检查**: 日志中应出现`【扣血函数进入】`，若未出现则检查函数签名是否匹配
+
+**修复示例**:
+```cpp
+// 错误 - 函数名不匹配
+UFUNCTION(BlueprintCallable, Category = "伤害接口")
+float TakeInterfaceDamage(const FHitInfo& HitInfo);  // 实现的是TakeInterfaceDamage
+
+// 正确 - 与接口定义完全一致
+virtual float TakeDamage_Implementation(const FHitInfo& HitInfo) override;  // 实现TakeDamage
+```
+
+---
+
+#### ❌ 错误: BlueprintNativeEvent被蓝图空实现覆盖
+
+**现象**: 蓝图接口面板显示`TakeDamage`为黄色闪电（已实现），但事件图表为空，导致C++逻辑永不执行
+
+**规范**: 慎用`BlueprintNativeEvent`，如果必须使用，确保蓝图实现中调用`Parent: 函数名`
+
+**建议**: 核心逻辑（扣血、死亡）使用纯C++实现（去掉`BlueprintNativeEvent`），通过委托事件让蓝图扩展
+
+**修复示例**:
+```cpp
+// 危险 - 允许蓝图覆盖，可能被空实现
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "伤害接口")
+float TakeDamage(const FHitInfo& HitInfo);
+
+// 安全 - 禁止蓝图覆盖，强制走C++
+UFUNCTION(BlueprintCallable, Category = "伤害接口")
+float TakeDamage(const FHitInfo& HitInfo);
+```
+
+---
+
+#### ❌ 错误: 血量初始化失败 (CurrentHealth = 0)
+
+**现象**: `IsAlive()`返回false，导致`TakeDamage`第一行就return，无法扣血
+
+**规范**: 在`BeginPlay()`中强制初始化：`AttributeComp->SetCurrentHealth(MaxHealth)`
+
+**验证**: 运行游戏后检查Details面板，CurrentHealth必须为正值（如100）
+
+**修复示例**:
+```cpp
+void AEnemyBase::BeginPlay()
+{
+    Super::BeginPlay();
+    
+    // 强制确保血量初始化（关键！）
+    if (AttributeComp && AttributeComp->GetCurrentHealth() <= 0)
+    {
+        float MaxHP = AttributeComp->GetMaxHealth();
+        if (MaxHP <= 0) MaxHP = 100.0f;
+        
+        AttributeComp->SetCurrentHealth(MaxHP);
+        UE_LOG(LogTemp, Log, TEXT("[EnemyBase] 强制初始化血量: %.0f"), MaxHP);
+    }
+}
+```
+
+---
+
+### 2. UE5编辑器操作规范
+
+#### ❌ 错误: 创建Data Asset时误选Blueprint Class
+
+**现象**: 创建了蓝色图标的Blueprint Class，导致Enemy Data下拉框无法识别
+
+**规范**: 创建路径必须是**Miscellaneous → Data Asset**（白色文档图标），不是Blueprint Class
+
+**验证**: 创建后图标应为白色📄，不是蓝色🔷
+
+**操作步骤**:
+```
+右键内容浏览器 → Miscellaneous（杂项） → Data Asset（数据资产）
+→ 选择类型 → 命名（如DA_TestEnemy）
+→ 验证图标为白色文档
+```
+
+---
+
+#### ❌ 错误: 重复添加继承组件
+
+**现象**: 组件面板出现`StateMachineComp`（灰色/继承）和`EnemyStateMachine`（白色/手动）两个状态机
+
+**规范**: 从EnemyBase继承的组件（AttributeComp/HitReactionComp/StateMachineComp）**严禁**手动添加
+
+**识别**: 继承组件显示灰色图标，手动添加显示白色图标
+
+**正确操作**:
+```
+组件面板应显示（灰色=继承）:
+├── AttributeComp        【灰色】✅ 已继承，无需添加
+├── HitReactionComp      【灰色】✅ 已继承，无需添加
+└── StateMachineComp     【灰色】✅ 已继承，无需添加
+```
+
+---
+
+#### ❌ 错误: Show Debug Info未启用
+
+**现象**: 敌人头顶不显示HP和State，只能在日志看状态
+
+**规范**: 在BP_TestEnemy的**Class Defaults → Debug**分类中勾选**Show Debug Info**
+
+**注意**: 不是在组件细节面板，而是在类默认值（Class Defaults）中
+
+**操作步骤**:
+```
+打开BP_TestEnemy → 点击Class Defaults（右上角）
+→ 左侧面板搜索"show"
+→ 勾选Show Debug Info
+→ 编译保存
+```
+
+---
+
+### 3. 版本控制规范
+
+#### ❌ 错误: 提交.vs/文件夹导致GitHub拒绝推送
+
+**现象**: 推送时报错`File .vs/xxx is 1310 MB, exceeds 100.00 MB limit`
+
+**规范**: .gitignore必须包含:
+```
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+```
+
+**修复步骤**:
+```bash
+# 1. 添加到.gitignore
+echo ".vs/" >> .gitignore
+
+# 2. 从缓存中删除已跟踪的大文件
+git rm -r --cached .vs/
+git rm -r --cached Binaries/
+git rm -r --cached Intermediate/
+
+# 3. 提交并推送
+git add .gitignore
+git commit -m "Remove large files and update .gitignore"
+git push
+```
+
+---
+
+### 4. 调试日志黄金法则
+
+**原则**: 在关键函数第一行添加`UE_LOG(Warning)`，确保能追踪到函数是否被调用
+
+**必加日志的位置**:
+```cpp
+// 接口函数入口
+float AEnemyBase::TakeDamage_Implementation(const FHitInfo& HitInfo)
+{
+    UE_LOG(LogTemp, Warning, TEXT("【扣血函数进入】%s 伤害:%.0f"), *GetName(), HitInfo.Damage);
+    // ...
+}
+
+// 初始化完成
+void AEnemyBase::BeginPlay()
+{
+    Super::BeginPlay();
+    UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s BeginPlay 初始化完成"), *GetName());
+    // ...
+}
+
+// 状态变更
+void AEnemyStateMachineComponent::ForceStateChange(EEnemyState NewState)
+{
+    UE_LOG(LogTemp, Log, TEXT("[StateMachine] %s: %s -> %s"), 
+        *GetName(), *UEnum::GetValueAsString(CurrentState), *UEnum::GetValueAsString(NewState));
+    // ...
+}
+```
+
+---
+
+### 5. 快速诊断表
+
+| 现象 | 检查点 | 解决方案 |
+|------|--------|----------|
+| 扣血函数日志未出现 | 函数名匹配 | 检查`TakeDamage` vs `TakeInterfaceDamage` |
+| 扣血函数进入但无后续 | IsAlive()检查 | 确认CurrentHealth > 0 |
+| 血量不变 | ModifyHealth调用 | 检查AttributeComp是否为NULL |
+| 无状态切换 | HitReaction类型 | 确认HitInfo.HitReaction不为None |
+| 无闪白 | HitReactionComp配置 | 检查FlashDuration > 0 |
+| 头顶不显示HP | Show Debug Info | 在Class Defaults中勾选 |
+| 有两个同名组件 | 重复添加 | 删除白色图标的（手动添加的） |
+| DA无法识别 | 创建类型错误 | 确认是Data Asset（白色图标）不是Blueprint Class |
+
+---
+
+*最后更新: 2026-03-07*  
+*整理自: Phase 4.1 敌人系统开发Debug Log*
