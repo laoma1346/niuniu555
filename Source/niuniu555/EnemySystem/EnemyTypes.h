@@ -92,6 +92,19 @@ enum class EAIBehaviorPriority : uint8
 };
 
 /**
+ * 神格碎片类型枚举
+ * 用于技能树解锁和升级
+ */
+UENUM(BlueprintType)
+enum class EDivineFragmentType : uint8
+{
+    Universal     UMETA(DisplayName = "通用碎片"),      // 所有流派可用
+    WarPath       UMETA(DisplayName = "武财神碎片"),    // 攻击流
+    WealthPath    UMETA(DisplayName = "文财神碎片"),    // 防御流
+    SupportPath   UMETA(DisplayName = "辅助碎片")       // 辅助流
+};
+
+/**
  * 攻击类型枚举
  * 定义敌人的攻击方式
  */

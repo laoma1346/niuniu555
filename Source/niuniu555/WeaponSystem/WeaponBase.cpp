@@ -867,12 +867,16 @@ void AWeaponBase::SpawnHitEffect(const FVector& Location, const FVector& Normal)
     
     if (HitEffect != nullptr)
     {
-        UGameplayStatics::SpawnEmitterAtLocation(
+        UParticleSystemComponent* ParticleComp = UGameplayStatics::SpawnEmitterAtLocation(
             GetWorld(),
             HitEffect,
             Location,
             Rotation
         );
+        if (ParticleComp)
+        {
+            ParticleComp->bAutoDestroy = true;
+        }
     }
 }
 

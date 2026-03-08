@@ -7,6 +7,10 @@
 *.vcxproj.user
 ipch/
 *.VC.db
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 
 # UE5
 Binaries/
@@ -14,3 +18,17 @@ DerivedDataCache/
 Intermediate/
 Saved/
 Script/
+Build/
+.idea/
+
+# 大文件
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+
+# 临时文件
+*.tmp
+*.temp
+*.log

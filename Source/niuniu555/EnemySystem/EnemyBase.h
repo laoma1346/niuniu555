@@ -252,6 +252,18 @@ protected:
     UFUNCTION(BlueprintCallable, Category = "生命周期")
     virtual void DestroyCorpse();
 
+    // 生成金币掉落（由SpawnLoot调用）
+    UFUNCTION(BlueprintCallable, Category = "掉落")
+    virtual void SpawnGoldDrop();
+
+    // 生成装备掉落（由SpawnLoot调用）
+    UFUNCTION(BlueprintCallable, Category = "掉落")
+    virtual void SpawnEquipmentDrop();
+
+    // 生成神格碎片掉落（由SpawnLoot调用）
+    UFUNCTION(BlueprintCallable, Category = "掉落")
+    virtual void SpawnDivineFragmentDrop();
+
     // 更新属性组件数值（从数据资产）
     UFUNCTION()
     virtual void UpdateAttributeStats();

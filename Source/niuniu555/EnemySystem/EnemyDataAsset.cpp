@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "EnemyDataAsset.h"
+#include "DivineFragmentDropItem.h"
 
 UEnemyDataAsset::UEnemyDataAsset()
 {
@@ -65,6 +66,19 @@ UEnemyDataAsset::UEnemyDataAsset()
     ExperienceReward = 10;
     BaseGoldDrop = 5;
     GoldDropVariance = 0.2f;
+
+    // ========== 神格碎片掉落默认值 ==========
+    BossFragmentDropCount = 5;
+    EliteFragmentDropChance = 0.5f;
+    EliteFragmentCountRange = FIntPoint(1, 3);
+    NormalFragmentDropChance = 0.1f;
+    NormalFragmentCountRange = FIntPoint(1, 1);
+    
+    // 默认碎片类型权重 - 通用为主
+    FragmentTypeWeights.Add(EDivineFragmentType::Universal, 50);
+    FragmentTypeWeights.Add(EDivineFragmentType::WarPath, 20);
+    FragmentTypeWeights.Add(EDivineFragmentType::WealthPath, 20);
+    FragmentTypeWeights.Add(EDivineFragmentType::SupportPath, 10);
 }
 
 float UEnemyDataAsset::GetHealthForChapter(int32 Chapter) const

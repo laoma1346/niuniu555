@@ -245,6 +245,40 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "掉落配置", meta = (ClampMin = 0, ClampMax = 1))
     float GoldDropVariance;
 
+    // 金币掉落物类 - 需要在蓝图中配置BP_GoldDropItem
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "掉落配置")
+    TSubclassOf<class AGoldDropItem> GoldDropClass;
+
+    // ========== 神格碎片掉落配置 ==========
+
+    // 神格碎片掉落物类
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "神格碎片掉落")
+    TSubclassOf<class ADivineFragmentDropItem> DivineFragmentClass;
+
+    // BOSS必定掉落碎片数量
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "神格碎片掉落", meta = (ClampMin = 0))
+    int32 BossFragmentDropCount = 5;
+
+    // 精英敌人掉落概率 (0-1)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "神格碎片掉落", meta = (ClampMin = 0, ClampMax = 1))
+    float EliteFragmentDropChance = 0.5f;
+
+    // 精英掉落碎片数量范围
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "神格碎片掉落", meta = (ClampMin = 0))
+    FIntPoint EliteFragmentCountRange = FIntPoint(1, 3);
+
+    // 普通敌人掉落概率 (0-1)
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "神格碎片掉落", meta = (ClampMin = 0, ClampMax = 1))
+    float NormalFragmentDropChance = 0.1f;
+
+    // 普通掉落碎片数量范围
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "神格碎片掉落", meta = (ClampMin = 0))
+    FIntPoint NormalFragmentCountRange = FIntPoint(1, 1);
+
+    // 碎片类型权重 - 决定掉落哪种类型的碎片
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "神格碎片掉落")
+    TMap<EDivineFragmentType, int32> FragmentTypeWeights;
+
     // ========== 特效配置 ==========
 
     // 出生特效
@@ -258,6 +292,10 @@ public:
     // 死亡特效
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "特效配置")
     TObjectPtr<UParticleSystem> DeathEffect;
+
+    // 死亡特效生命周期（秒）- 0表示使用粒子系统默认生命周期
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "特效配置", meta = (ClampMin = 0))
+    float DeathEffectLifeTime = 3.0f;
 
     // 攻击预警特效（BOSS/精英用）
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "特效配置")

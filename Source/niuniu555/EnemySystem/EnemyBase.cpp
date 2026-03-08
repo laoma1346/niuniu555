@@ -2,7 +2,12 @@
 
 #include "EnemyBase.h"
 #include "EnemyDataAsset.h"
+#include "DropTableDataAsset.h"
+#include "DivineFragmentDropItem.h"
+#include "GoldDropItem.h"
+#include "EquipmentDropItem.h"
 #include "EnemyStateMachineComponent.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "AttributeSystem/AttributeComponent.h"
 #include "CombatSystem/HitReactionComponent.h"
 #include "CombatSystem/DamageCalculator.h"
@@ -449,10 +454,15 @@ void AEnemyBase::PlayHitReaction_Implementation(const FHitInfo& HitInfo)
     // 使用HitReactionComponent处理视觉反馈
     if (HitReactionComp)
     {
-        // 播放受击特效
+        // 播放受击特效（带自动销毁）
         if (EnemyData && EnemyData->HitEffect)
         {
-            UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), EnemyData->HitEffect, HitInfo.HitLocation);
+            UParticleSystemComponent* ParticleComp = UGameplayStatics::SpawnEmitterAtLocation(
+                GetWorld(), EnemyData->HitEffect, HitInfo.HitLocation);
+            if (ParticleComp)
+            {
+                ParticleComp->bAutoDestroy = true;
+            }
         }
 
         // 播放受击音效
@@ -565,10 +575,28 @@ void AEnemyBase::SpawnLoot()
         return;
     }
 
-    // 播放死亡特效
+    // 播放死亡特效（带自动销毁和生命周期控制）
     if (EnemyData->DeathEffect)
     {
-        UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), EnemyData->DeathEffect, GetActorLocation());
+        UParticleSystemComponent* ParticleComp = UGameplayStatics::SpawnEmitterAtLocation(
+            GetWorld(), EnemyData->DeathEffect, GetActorLocation());
+        if (ParticleComp)
+        {
+            ParticleComp->bAutoDestroy = true;
+            
+            // 为循环特效设置强制销毁定时器（使用数据资产中配置的生命周期）
+            if (EnemyData->DeathEffectLifeTime > 0.0f)
+            {
+                FTimerHandle DestroyEffectTimer;
+                GetWorldTimerManager().SetTimer(DestroyEffectTimer, [ParticleComp]()
+                {
+                    if (ParticleComp && ParticleComp->IsValidLowLevel())
+                    {
+                        ParticleComp->DestroyComponent();
+                    }
+                }, EnemyData->DeathEffectLifeTime, false);
+            }
+        }
     }
 
     // 播放死亡音效
@@ -577,8 +605,82 @@ void AEnemyBase::SpawnLoot()
         UGameplayStatics::PlaySoundAtLocation(GetWorld(), EnemyData->DeathSound, GetActorLocation());
     }
 
-    // TODO: 实际掉落物生成（由掉落系统处理）
+    // 生成金币掉落
+    SpawnGoldDrop();
+
+    // 生成装备掉落
+    SpawnEquipmentDrop();
+
+    // 生成神格碎片掉落
+    SpawnDivineFragmentDrop();
+
     BP_OnSpawnLoot();
+}
+
+void AEnemyBase::SpawnGoldDrop()
+{
+    if (!EnemyData)
+    {
+        return;
+    }
+
+    // 检查是否有金币掉落类配置
+    if (!EnemyData->GoldDropClass)
+    {
+        UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 未配置金币掉落类(GoldDropClass)，请在敌人数资中配置BP_GoldDropItem"), *GetName());
+        return;
+    }
+
+    // 计算金币数量（基础值 + 浮动）
+    int32 GoldAmount = EnemyData->BaseGoldDrop;
+    if (EnemyData->GoldDropVariance > 0.0f)
+    {
+        float Variance = FMath::RandRange(-EnemyData->GoldDropVariance, EnemyData->GoldDropVariance);
+        GoldAmount = FMath::RoundToInt(GoldAmount * (1.0f + Variance));
+    }
+    GoldAmount = FMath::Max(0, GoldAmount);
+
+    if (GoldAmount <= 0)
+    {
+        return;
+    }
+
+    // 计算生成位置（抬高150cm避免嵌入地面，带随机偏移）
+    FVector DropLocation = GetActorLocation() + FVector(
+        FMath::RandRange(-30.0f, 30.0f), 
+        FMath::RandRange(-30.0f, 30.0f), 
+        150.0f  // 抬高150cm确保在地面上
+    );
+
+    // 计算初始冲量（让金币散落）
+    FVector SpawnImpulse = FVector(
+        FMath::RandRange(-200.0f, 200.0f),
+        FMath::RandRange(-200.0f, 200.0f),
+        FMath::RandRange(100.0f, 300.0f)
+    );
+
+    // 生成金币Actor
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    AGoldDropItem* GoldDrop = GetWorld()->SpawnActor<AGoldDropItem>(
+        EnemyData->GoldDropClass,
+        DropLocation,
+        FRotator::ZeroRotator,
+        SpawnParams
+    );
+
+    if (GoldDrop)
+    {
+        GoldDrop->SetGoldAmount(GoldAmount);
+        GoldDrop->InitializeDrop(DropLocation, SpawnImpulse);
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 掉落 %d 金币（位置: %s）"),
+            *GetName(), GoldAmount, *DropLocation.ToString());
+    }
+    else
+    {
+        UE_LOG(LogEnemy, Error, TEXT("【EnemyBase】%s 金币生成失败！位置: %s"), *GetName(), *DropLocation.ToString());
+    }
 }
 
 void AEnemyBase::PlayDeathAnimation()
@@ -586,21 +688,35 @@ void AEnemyBase::PlayDeathAnimation()
     if (EnemyData && EnemyData->DeathMontage)
     {
         PlayAnimMontage(EnemyData->DeathMontage);
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 开始播放死亡动画：%s"), 
+            *GetName(), *EnemyData->DeathMontage->GetName());
+    }
+    else
+    {
+        UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 未配置死亡动画"), *GetName());
     }
 }
 
 void AEnemyBase::EnableRagdoll()
 {
+    UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 启用布娃娃物理"), *GetName());
+
     if (GetMesh())
     {
         GetMesh()->SetSimulatePhysics(true);
         GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 骨骼网格体物理模拟已启用，碰撞配置：Ragdoll"), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 骨骼网格体为空，无法启用布娃娃"), *GetName());
     }
 
     // 禁用角色移动
     if (GetCharacterMovement())
     {
         GetCharacterMovement()->DisableMovement();
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 角色移动已禁用"), *GetName());
     }
 
     // 设置布娃娃持续时间后清理
@@ -608,12 +724,214 @@ void AEnemyBase::EnableRagdoll()
     {
         FTimerHandle RagdollTimer;
         GetWorldTimerManager().SetTimer(RagdollTimer, this, &AEnemyBase::DestroyCorpse, EnemyData->RagdollDuration, false);
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 布娃娃持续 %.1f 秒后将销毁尸体"), 
+            *GetName(), EnemyData->RagdollDuration);
     }
 }
 
 void AEnemyBase::DestroyCorpse()
 {
+    UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 销毁尸体"), *GetName());
     Destroy();
+}
+
+void AEnemyBase::SpawnEquipmentDrop()
+{
+    if (!EnemyData || !EnemyData->DropTable)
+    {
+        return;
+    }
+
+    // 使用掉落表执行掉落判定
+    TArray<FDropItemEntry> DroppedItems = EnemyData->DropTable->RollDrops();
+    
+    for (const FDropItemEntry& Item : DroppedItems)
+    {
+        if (!Item.ItemClass)
+        {
+            continue;
+        }
+
+        // 检查是否是装备掉落物类型
+        if (!Item.ItemClass->IsChildOf(AEquipmentDropItem::StaticClass()))
+        {
+            UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 掉落的物品类 %s 不是 AEquipmentDropItem 类型"),
+                *GetName(), *Item.ItemClass->GetName());
+            continue;
+        }
+
+        FVector DropLocation = GetActorLocation() + FVector(
+            FMath::RandRange(-100.0f, 100.0f),
+            FMath::RandRange(-100.0f, 100.0f),
+            150.0f  // 抬高150cm避免嵌入地面
+        );
+
+        // 计算初始冲量（让装备散落）
+        FVector SpawnImpulse = FVector(
+            FMath::RandRange(-200.0f, 200.0f),
+            FMath::RandRange(-200.0f, 200.0f),
+            FMath::RandRange(100.0f, 300.0f)
+        );
+
+        // 生成装备Actor
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+        AEquipmentDropItem* EquipmentDrop = GetWorld()->SpawnActor<AEquipmentDropItem>(
+            Item.ItemClass,
+            DropLocation,
+            FRotator::ZeroRotator,
+            SpawnParams
+        );
+
+        if (EquipmentDrop)
+        {
+            // 初始化掉落（设置物理和位置）
+            EquipmentDrop->InitializeDrop(DropLocation, SpawnImpulse);
+            
+            UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 掉落装备: %s（位置: %s）"),
+                *GetName(), 
+                *Item.ItemClass->GetName(), 
+                *DropLocation.ToString());
+        }
+        else
+        {
+            UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 生成装备失败: %s"),
+                *GetName(), *Item.ItemClass->GetName());
+        }
+    }
+}
+
+void AEnemyBase::SpawnDivineFragmentDrop()
+{
+    if (!EnemyData)
+    {
+        return;
+    }
+
+    // 检查是否有碎片掉落物类
+    if (!EnemyData->DivineFragmentClass)
+    {
+        UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 未配置碎片掉落物类(DivineFragmentClass)，请在敌人数资中配置BP_DivineFragment"), *GetName());
+        return;
+    }
+
+    // 根据敌人类型确定掉落数量和概率
+    int32 FragmentCount = 0;
+    EDivineFragmentType FragmentType = EDivineFragmentType::Universal;
+    bool bShouldDrop = false;
+    FString DropReason;
+
+    if (EnemyData->IsBoss())
+    {
+        // BOSS必掉，固定数量
+        FragmentCount = EnemyData->BossFragmentDropCount;
+        bShouldDrop = true;
+        DropReason = TEXT("BOSS掉落");
+    }
+    else if (EnemyData->IsElite())
+    {
+        // 精英概率掉落
+        float DropChance = FMath::Clamp(EnemyData->EliteFragmentDropChance, 0.0f, 1.0f);
+        if (FMath::FRand() < DropChance)
+        {
+            int32 MinCount = EnemyData->EliteFragmentCountRange.X;
+            int32 MaxCount = EnemyData->EliteFragmentCountRange.Y;
+            FragmentCount = FMath::RandRange(MinCount, MaxCount);
+            bShouldDrop = true;
+            DropReason = TEXT("精英掉落");
+        }
+    }
+    else // 普通敌人
+    {
+        // 普通敌人低概率掉落
+        float DropChance = FMath::Clamp(EnemyData->NormalFragmentDropChance, 0.0f, 1.0f);
+        if (FMath::FRand() < DropChance)
+        {
+            int32 MinCount = EnemyData->NormalFragmentCountRange.X;
+            int32 MaxCount = EnemyData->NormalFragmentCountRange.Y;
+            FragmentCount = FMath::RandRange(MinCount, MaxCount);
+            bShouldDrop = true;
+            DropReason = TEXT("普通掉落");
+        }
+    }
+
+    // 如果没有触发掉落，直接返回
+    if (!bShouldDrop || FragmentCount <= 0)
+    {
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 未触发碎片掉落"), *GetName());
+        return;
+    }
+
+    // 随机选择碎片类型（根据权重）
+    if (EnemyData->FragmentTypeWeights.Num() > 0)
+    {
+        int32 TotalWeight = 0;
+        for (const auto& Pair : EnemyData->FragmentTypeWeights)
+        {
+            TotalWeight += Pair.Value;
+        }
+
+        if (TotalWeight > 0)
+        {
+            int32 RandomWeight = FMath::RandRange(0, TotalWeight - 1);
+            int32 CurrentWeight = 0;
+
+            for (const auto& Pair : EnemyData->FragmentTypeWeights)
+            {
+                CurrentWeight += Pair.Value;
+                if (RandomWeight < CurrentWeight)
+                {
+                    FragmentType = Pair.Key;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 计算生成位置（带随机偏移）
+    FVector DropLocation = GetActorLocation() + FVector(
+        FMath::RandRange(-100.0f, 100.0f),
+        FMath::RandRange(-100.0f, 100.0f),
+        150.0f  // 稍微高一点，便于区分
+    );
+
+    FVector SpawnImpulse = FVector(
+        FMath::RandRange(-200.0f, 200.0f),
+        FMath::RandRange(-200.0f, 200.0f),
+        FMath::RandRange(100.0f, 300.0f)
+    );
+
+    // 延迟生成碎片（避免与金币/装备重叠）
+    FTimerHandle SpawnTimer;
+    auto SpawnFragmentLambda = [this, DropLocation, SpawnImpulse, FragmentType, FragmentCount, DropReason]()
+    {
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+        ADivineFragmentDropItem* FragmentDrop = GetWorld()->SpawnActor<ADivineFragmentDropItem>(
+            EnemyData->DivineFragmentClass,
+            DropLocation,
+            FRotator::ZeroRotator,
+            SpawnParams
+        );
+
+        if (FragmentDrop)
+        {
+            FragmentDrop->SetFragmentType(FragmentType);
+            FragmentDrop->SetFragmentCount(FragmentCount);
+            FragmentDrop->InitializeDrop(DropLocation, SpawnImpulse);
+        }
+
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s %s - %s x%d 在 %s"),
+            *GetName(),
+            *DropReason,
+            *UEnum::GetValueAsString(FragmentType),
+            FragmentCount,
+            *DropLocation.ToString());
+    };
+
+    GetWorldTimerManager().SetTimer(SpawnTimer, SpawnFragmentLambda, 0.3f, false);
 }
 
 // ========== 查询函数 ==========

@@ -54,7 +54,15 @@ void ACombatEnemy::DoAIComboAttack()
 	bIsAttacking = true;
 
 	// choose how many times we're going to attack
-	TargetComboCount = FMath::RandRange(1, ComboSectionNames.Num() - 1);
+	if (ComboSectionNames.Num() > 1)
+	{
+		TargetComboCount = FMath::RandRange(1, ComboSectionNames.Num() - 1);
+	}
+	else
+	{
+		// fallback to single attack if no combo sections
+		TargetComboCount = 1;
+	}
 
 	// reset the attack counter
 	CurrentComboAttack = 0;
@@ -62,14 +70,35 @@ void ACombatEnemy::DoAIComboAttack()
 	// play the attack montage
 	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
 	{
-		const float MontageLength = AnimInstance->Montage_Play(ComboAttackMontage, 1.0f, EMontagePlayReturnType::MontageLength, 0.0f, true);
-
-		// subscribe to montage completed and interrupted events
-		if (MontageLength > 0.0f)
+		if (ComboAttackMontage)
 		{
-			// set the end delegate for the montage
-			AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ComboAttackMontage);
+			const float MontageLength = AnimInstance->Montage_Play(ComboAttackMontage, 1.0f, EMontagePlayReturnType::MontageLength, 0.0f, true);
+
+			// subscribe to montage completed and interrupted events
+			if (MontageLength > 0.0f)
+			{
+				// set the end delegate for the montage
+				AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ComboAttackMontage);
+			}
+			else
+			{
+				// montage failed to play, reset attacking flag
+				bIsAttacking = false;
+				OnAttackCompleted.ExecuteIfBound();
+			}
 		}
+		else
+		{
+			// no montage, reset attacking flag
+			bIsAttacking = false;
+			OnAttackCompleted.ExecuteIfBound();
+		}
+	}
+	else
+	{
+		// no anim instance, reset attacking flag
+		bIsAttacking = false;
+		OnAttackCompleted.ExecuteIfBound();
 	}
 }
 
@@ -93,14 +122,35 @@ void ACombatEnemy::DoAIChargedAttack()
 	// play the attack montage
 	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
 	{
-		const float MontageLength = AnimInstance->Montage_Play(ChargedAttackMontage, 1.0f, EMontagePlayReturnType::MontageLength, 0.0f, true);
-
-		// subscribe to montage completed and interrupted events
-		if (MontageLength > 0.0f)
+		if (ChargedAttackMontage)
 		{
-			// set the end delegate for the montage
-			AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ChargedAttackMontage);
+			const float MontageLength = AnimInstance->Montage_Play(ChargedAttackMontage, 1.0f, EMontagePlayReturnType::MontageLength, 0.0f, true);
+
+			// subscribe to montage completed and interrupted events
+			if (MontageLength > 0.0f)
+			{
+				// set the end delegate for the montage
+				AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ChargedAttackMontage);
+			}
+			else
+			{
+				// montage failed to play, reset attacking flag
+				bIsAttacking = false;
+				OnAttackCompleted.ExecuteIfBound();
+			}
 		}
+		else
+		{
+			// no montage, reset attacking flag
+			bIsAttacking = false;
+			OnAttackCompleted.ExecuteIfBound();
+		}
+	}
+	else
+	{
+		// no anim instance, reset attacking flag
+		bIsAttacking = false;
+		OnAttackCompleted.ExecuteIfBound();
 	}
 }
 

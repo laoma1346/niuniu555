@@ -11,6 +11,7 @@
 #include "CombatSystem/DamageableInterface.h"
 #include "CombatSystem/DamageTypes.h"
 #include "EnemySystem/EnemyBase.h"
+#include "EnemySystem/EnemyDataAsset.h"
 
 // 定义日志分类
 DEFINE_LOG_CATEGORY(LogAIAttack);
@@ -278,26 +279,52 @@ void UBTTask_Attack::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemo
             float AnimPlayTime = 0.0f;
             
             // 1. 检查动画是否仍在播放
-            if (Memory->AnimInstance.IsValid() && AttackMontage)
+            if (Memory->AnimInstance.IsValid())
             {
-                if (Memory->AnimInstance->Montage_IsPlaying(AttackMontage))
+                UAnimMontage* CurrentMontage = nullptr;
+                
+                // 首先检查是否有从敌人数据资产加载的动画
+                if (AAIController* CurrentAIController = OwnerComp.GetAIOwner())
                 {
-                    bAnimationPlaying = true;
-                    AnimPlayTime = Memory->AnimInstance->GetCurrentActiveMontage() ? 
-                        Memory->AnimInstance->Montage_GetPosition(AttackMontage) : 0.0f;
-                    
-                    // 【关键修复】如果动画播放时间过长（超过动画长度+0.5秒），强制结束
-                    float AnimLength = AttackMontage->GetPlayLength();
-                    if (AnimPlayTime > AnimLength + 0.5f)
+                    if (APawn* CurrentAIPawn = CurrentAIController->GetPawn())
                     {
-                        UE_LOG(LogAIAttack, Warning, TEXT("动画播放时间过长(%.2f/%.2f)，强制结束"), 
-                            AnimPlayTime, AnimLength);
-                        Memory->AnimInstance->Montage_Stop(0.1f, AttackMontage);
-                        bAnimationPlaying = false;
+                        if (AEnemyBase* EnemyBase = Cast<AEnemyBase>(CurrentAIPawn))
+                        {
+                            if (EnemyBase->GetEnemyData() && EnemyBase->GetEnemyData()->AttackMontage)
+                            {
+                                CurrentMontage = EnemyBase->GetEnemyData()->AttackMontage;
+                            }
+                        }
                     }
-                    else
+                }
+                
+                // 如果没有，使用手动配置的动画
+                if (!CurrentMontage && AttackMontage)
+                {
+                    CurrentMontage = AttackMontage;
+                }
+                
+                if (CurrentMontage)
+                {
+                    if (Memory->AnimInstance->Montage_IsPlaying(CurrentMontage))
                     {
-                        bCanFinish = false;
+                        bAnimationPlaying = true;
+                        AnimPlayTime = Memory->AnimInstance->GetCurrentActiveMontage() ? 
+                            Memory->AnimInstance->Montage_GetPosition(CurrentMontage) : 0.0f;
+                        
+                        // 【关键修复】如果动画播放时间过长（超过动画长度+0.5秒），强制结束
+                        float AnimLength = CurrentMontage->GetPlayLength();
+                        if (AnimPlayTime > AnimLength + 0.5f)
+                        {
+                            UE_LOG(LogAIAttack, Warning, TEXT("动画播放时间过长(%.2f/%.2f)，强制结束"), 
+                                AnimPlayTime, AnimLength);
+                            Memory->AnimInstance->Montage_Stop(0.1f, CurrentMontage);
+                            bAnimationPlaying = false;
+                        }
+                        else
+                        {
+                            bCanFinish = false;
+                        }
                     }
                 }
             }
@@ -322,9 +349,29 @@ void UBTTask_Attack::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemo
                     bAnimationPlaying, Memory->StateTimer, AttackRecoveryTime);
                 
                 // 强制停止动画
-                if (Memory->AnimInstance.IsValid() && AttackMontage)
+                if (Memory->AnimInstance.IsValid())
                 {
-                    Memory->AnimInstance->Montage_Stop(0.1f, AttackMontage);
+                    // 停止手动配置的动画
+                    if (AttackMontage)
+                    {
+                        Memory->AnimInstance->Montage_Stop(0.1f, AttackMontage);
+                    }
+                    
+                    // 停止从敌人数据资产加载的动画
+                    if (AAIController* CurrentAIController = OwnerComp.GetAIOwner())
+                    {
+                        if (APawn* CurrentAIPawn = CurrentAIController->GetPawn())
+                        {
+                            if (AEnemyBase* EnemyBase = Cast<AEnemyBase>(CurrentAIPawn))
+                            {
+                                if (EnemyBase->GetEnemyData() && EnemyBase->GetEnemyData()->AttackMontage)
+                                {
+                                    UAnimMontage* EnemyAttackMontage = EnemyBase->GetEnemyData()->AttackMontage;
+                                    Memory->AnimInstance->Montage_Stop(0.1f, EnemyAttackMontage);
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);  // 【修复】超时返回Succeeded而非Failed
@@ -344,11 +391,31 @@ void UBTTask_Attack::OnTaskFinished(UBehaviorTreeComponent& OwnerComp, uint8* No
     FAttackTaskMemory* Memory = GetAttackMemory(NodeMemory);
     
     // 停止动画（如果还在播放）
-    if (Memory->AnimInstance.IsValid() && AttackMontage)
+    if (Memory->AnimInstance.IsValid())
     {
-        if (Memory->AnimInstance->Montage_IsPlaying(AttackMontage))
+        // 停止手动配置的动画
+        if (AttackMontage && Memory->AnimInstance->Montage_IsPlaying(AttackMontage))
         {
             Memory->AnimInstance->Montage_Stop(0.25f, AttackMontage);
+        }
+        
+        // 尝试停止从敌人数据资产加载的动画
+        if (AAIController* CurrentAIController = OwnerComp.GetAIOwner())
+        {
+            if (APawn* CurrentAIPawn = CurrentAIController->GetPawn())
+            {
+                if (AEnemyBase* EnemyBase = Cast<AEnemyBase>(CurrentAIPawn))
+                {
+                    if (EnemyBase->GetEnemyData() && EnemyBase->GetEnemyData()->AttackMontage)
+                    {
+                        UAnimMontage* EnemyAttackMontage = EnemyBase->GetEnemyData()->AttackMontage;
+                        if (Memory->AnimInstance->Montage_IsPlaying(EnemyAttackMontage))
+                        {
+                            Memory->AnimInstance->Montage_Stop(0.25f, EnemyAttackMontage);
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -374,19 +441,32 @@ void UBTTask_Attack::StartAttack(AAIController* AIController, APawn* AIPawn, AAc
             Memory->AnimInstance = AnimInstance;
             Memory->AnimStartTime = GetWorld()->GetTimeSeconds();
             
-            if (AttackMontage)
+            // 尝试从敌人数据资产中获取攻击动画
+            UAnimMontage* MontageToPlay = AttackMontage;
+            
+            // 检查是否是AEnemyBase类型
+            if (AEnemyBase* EnemyBase = Cast<AEnemyBase>(AICharacter))
+            {
+                if (EnemyBase->GetEnemyData() && EnemyBase->GetEnemyData()->AttackMontage)
+                {
+                    MontageToPlay = EnemyBase->GetEnemyData()->AttackMontage;
+                    UE_LOG(LogAIAttack, Log, TEXT("从敌人数据资产加载攻击动画: %s"), *MontageToPlay->GetName());
+                }
+            }
+            
+            if (MontageToPlay)
             {
                 // 绑定动画完成回调
                 FOnMontageEnded EndDelegate;
                 EndDelegate.BindUObject(this, &UBTTask_Attack::OnAttackMontageEnded);
-                AnimInstance->Montage_SetEndDelegate(EndDelegate, AttackMontage);
+                AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
                 
-                float Duration = AICharacter->PlayAnimMontage(AttackMontage);
+                float Duration = AICharacter->PlayAnimMontage(MontageToPlay);
                 UE_LOG(LogAIAttack, Log, TEXT("播放攻击动画，时长: %.2f"), Duration);
             }
             else
             {
-                UE_LOG(LogAIAttack, Warning, TEXT("AttackMontage未设置"));
+                UE_LOG(LogAIAttack, Warning, TEXT("攻击动画未设置"));
             }
         }
         else
