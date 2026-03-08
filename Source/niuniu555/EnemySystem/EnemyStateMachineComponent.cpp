@@ -2,6 +2,8 @@
 
 #include "EnemyStateMachineComponent.h"
 #include "EnemyDataAsset.h"
+#include "AIController.h"
+#include "BehaviorTree/BlackboardComponent.h"
 
 UEnemyStateMachineComponent::UEnemyStateMachineComponent()
 {
@@ -294,20 +296,83 @@ void UEnemyStateMachineComponent::UpdateAttack(float DeltaTime)
 
 void UEnemyStateMachineComponent::UpdateHit(float DeltaTime)
 {
-    // 受击硬直时间结束后返回上一个状态
+    // 受击硬直时间结束后返回合适的状态
     if (StateTimer >= StateDuration)
     {
-        // 如果有追击目标则返回追击，否则返回待机
-        ReturnToPreviousState();
+        // 根据上一个状态决定返回什么状态
+        // 如果之前正在攻击或技能，回到待机（让玩家有喘息机会）
+        // 如果之前在追击，检查是否还有目标
+        if (PreviousState == EEnemyState::Attack || PreviousState == EEnemyState::Skill)
+        {
+            StartIdle();
+        }
+        else if (PreviousState == EEnemyState::Chase)
+        {
+            // 如果还有目标，继续追击，否则待机
+            AActor* OwnerActor = GetOwner();
+            if (OwnerActor)
+            {
+                AAIController* AIController = Cast<AAIController>(OwnerActor->GetInstigatorController());
+                if (!AIController)
+                {
+                    AIController = Cast<AAIController>(OwnerActor->GetOwner());
+                }
+                if (AIController)
+                {
+                    UBlackboardComponent* BB = AIController->GetBlackboardComponent();
+                    bool bHasTarget = false;
+                    if (BB)
+                    {
+                        // 尝试获取常见的目标键（与AI行为树任务兼容）
+                        static const TArray<FName> CommonTargetKeys = {
+                            FName(TEXT("TargetActor")),
+                            FName(TEXT("Target")),
+                            FName(TEXT("Player")),
+                            FName(TEXT("Enemy"))
+                        };
+                        for (const FName& KeyName : CommonTargetKeys)
+                        {
+                            UObject* Value = BB->GetValueAsObject(KeyName);
+                            if (Value != nullptr)
+                            {
+                                bHasTarget = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (bHasTarget)
+                    {
+                        StartChase();
+                    }
+                    else
+                    {
+                        StartIdle();
+                    }
+                }
+                else
+                {
+                    StartIdle();
+                }
+            }
+            else
+            {
+                StartIdle();
+            }
+        }
+        else
+        {
+            ReturnToPreviousState();
+        }
     }
 }
 
 void UEnemyStateMachineComponent::UpdateStun(float DeltaTime)
 {
-    // 眩晕时间结束后返回上一个状态
+    // 眩晕时间结束后返回待机
+    // 眩晕是强控制，结束后应该重新评估状态，不能直接返回之前的状态
     if (StateTimer >= StateDuration)
     {
-        ReturnToPreviousState();
+        StartIdle();
     }
 }
 

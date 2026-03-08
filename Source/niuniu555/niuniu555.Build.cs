@@ -15,6 +15,8 @@ public class niuniu555 : ModuleRules
 			"InputCore",
 			"EnhancedInput",
 			"AIModule",
+				"NavigationSystem",
+			"GameplayTasks",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
@@ -25,6 +27,13 @@ public class niuniu555 : ModuleRules
 
 		PublicIncludePaths.AddRange(new string[] {
 			"niuniu555",
+			"niuniu555/Public",
+			"niuniu555/Public/AI",
+			"niuniu555/AI",
+			"niuniu555/AI/BehaviorTree",
+			"niuniu555/AI/BehaviorTree/Tasks",
+			"niuniu555/AI/BehaviorTree/Decorators",
+			"niuniu555/AI/BehaviorTree/Services",
 			"niuniu555/SaveSystem",
 			"niuniu555/InputSystem",
 			"niuniu555/GameFlow",

@@ -18,7 +18,13 @@
 | Phase 1 | 基础架构与数据层 | ✅ 完成 | 存档、输入、状态机、对象池、属性系统 |
 | Phase 2 | 角色基础与移动 | ⚠️ 基本完成 | 移动✅、闪避✅、钩索✅、**角色状态机** ⏳ |
 | Phase 3 | 战斗核心系统 | ⚠️ 基本完成 | 武器✅、连招✅、伤害✅、**准星/锁定** ⏳、**派生攻击** ⏳ |
-| Phase 4 | 敌人与 AI | 🚧 进行中 | 敌人基类✅、行为树⏳、生成器⏳、掉落系统⏳ |
+| Phase 4 | 敌人与 AI | ⚠️ 基本完成 | 敌人基类✅、行为树✅、生成器⏳、掉落系统⏳ |
+
+### Phase 4 开发状态细分
+- **4.1 敌人基础架构**: ✅ 完成 (EnemyBase + EnemyStateMachineComponent + EnemyDataAsset)
+- **4.2 AI行为树系统**: ✅ 完成 (EnemyAIController + BTTasks + BTDecorators + BTServices)
+- **4.3 敌人生成器**: ⏳ 待开发
+- **4.4 敌人死亡与掉落系统**: ⏳ 待开发
 | Phase 5 | 装备与背包系统 | ⏳ 待开发 | 装备数据、随机词条、套装系统、背包 |
 | Phase 6 | 关卡与流程 | ⏳ 待开发 | 房间/节点系统、地图生成、节点交互 |
 | Phase 7 | 经济与成长系统 | ⏳ 待开发 | 金币、神格碎片、技能树、局内成长 |
@@ -198,12 +204,231 @@
 
 **Debug Log**: 详见「开发规范与常见陷阱」章节，记录了函数名不匹配、蓝图覆盖、血量初始化等关键问题及解决方案。
 
-### 4.2 AI行为树系统
+### 4.2 AI行为树系统 (🚧 进行中)
 
-- 行为树节点库（Selector/Sequence/Parallel/Decorator）
-- 感知系统（视觉锥形检测 / 听觉半径 / 伤害来源记忆）
-- 战术AI（包夹/躲避/技能冷却管理/优先级目标选择）
-- 精英与BOSS专用AI（阶段转换/狂暴模式/特殊机制）
+| 子模块 | 状态 | 文件 | 功能 |
+|--------|------|------|------|
+| **EnemyAIController** | ✅ 完成 (4.2.1) | `AI/EnemyAIController.h/cpp` | AI控制器基类，运行行为树，管理感知和目标，黑板Key管理 |
+| AIPerceptionComponent | ✅ 完成 (4.2.2) | `AI/EnemyAIController.h/cpp` | 视觉感知配置（半径3000，角度200°） |
+| **BTTask_Patrol** | ✅ 完成 (4.2.3) | `AI/BehaviorTree/Tasks/BTTask_Patrol.h/cpp` | 巡逻任务节点：随机导航点移动+到达等待 |
+| **BTTask_ChasePlayer** | ✅ 完成 (4.2.4) | `AI/BehaviorTree/Tasks/BTTask_ChasePlayer.h/cpp` | 追击任务节点：持续跟随目标，支持最大追击距离 |
+| **BTTask_Attack** | ✅ 完成 (4.2.5) | `AI/BehaviorTree/Tasks/BTTask_Attack.h/cpp` | 攻击任务节点：前摇-攻击-后摇状态机 |
+| **BTDecorator_DistanceCheck** | ✅ 完成 (4.2.6) | `AI/BehaviorTree/Decorators/BTDecorator_DistanceCheck.h/cpp` | 距离检查装饰器：4种比较模式 |
+| **BTService_UpdateTarget** | ✅ 完成 (4.2.7) | `AI/BehaviorTree/Services/BTService_UpdateTarget.h/cpp` | 目标更新服务：定期更新目标位置/距离/方向 |
+
+**推荐的行为树结构**:
+```
+[Root]
+  └─ [Selector] "AI根节点"
+       ├─ [Sequence] "战斗逻辑" [Decorator: TargetActor IsSet]
+       │    └─ [Selector] "选择攻击或追击" [Service: UpdateTarget]
+       │         ├─ [Sequence] "攻击" [Decorator: Distance < 250]
+       │         │    └─ [BTTask_Attack]
+       │         └─ [BTTask_ChasePlayer]
+       │
+       ├─ [Sequence] "返回逻辑" [Decorator: TargetActor IsNotSet]
+       │    └─ [BTTask_MoveTo] HomeLocation
+       │
+       └─ [Sequence] "巡逻逻辑"
+            └─ [BTTask_Patrol]
+```
+
+**黑板必需Key**:
+| Key | 类型 | 用途 |
+|-----|------|------|
+| TargetActor | Object(Actor) | 当前目标（玩家） |
+| HomeLocation | Vector | 出生点位置 |
+| PatrolCenter | Vector | 巡逻中心点 |
+| PatrolRadius | Float | 巡逻半径 |
+| TargetLocation | Vector | 目标位置（自动更新） |
+| TargetDirection | Vector | 目标方向（自动更新） |
+
+**测试文档**: `TestGuide_AI_BehaviorTree.md`
+
+**4.2.1 完成功能**:
+- ✅ 继承AAIController的EnemyAIController基类
+- ✅ 自动从EnemyDataAsset加载BehaviorTree和Blackboard
+- ✅ 配置AIPerception（视觉感知：半径3000，角度200°）
+- ✅ 黑板Key管理（TargetActor, HomeLocation, PatrolRadius等）
+- ✅ 目标自动发现（通过"Player"标签识别）
+- ✅ 与状态机联动（发现目标→StartChase，丢失目标→StartReturn）
+- ✅ 完整测试指南（含黑板/行为树创建步骤）
+
+**4.2.4 完成功能**:
+- ✅ 追击任务节点 BTTask_ChasePlayer
+- ✅ 从黑板获取TargetActor并持续追击
+- ✅ 支持最大追击距离限制（超出返回失败）
+- ✅ 进入攻击范围且**目标静止**时返回成功（防止震荡）
+- ✅ 定期重新寻路（RepathInterval，默认0.5秒）
+- ✅ 追击起始位置记录（用于计算追击距离）
+- ✅ 目标丢失检测（返回失败）
+- ✅ **目标移动检测**：使用 LastTargetLocation 检测目标是否静止
+
+**技术要点**:
+- 使用 `AIController->MoveToActor` 持续跟随移动目标
+- 移动状态检测：`AIController->GetMoveStatus() == EPathFollowingStatus::Type::Idle`
+- 距离检查：目标在AttackRange内→成功，超出MaxChaseDistance→失败
+
+**4.2.5 完成功能**:
+- ✅ 攻击任务节点 BTTask_Attack
+- ✅ 攻击状态机：前摇(WindingUp) → 攻击判定(Attacking) → 后摇(Recovering)
+- ✅ 攻击前可配置面向目标旋转（RotationSpeed）
+- ✅ 支持攻击动画蒙太奇播放，任务等待动画完成才结束
+- ✅ 伤害判定使用IDamageableInterface接口
+- ✅ 攻击范围检查（距离+角度锥形检查）
+- ✅ 目标不在范围内时返回失败
+- ✅ 攻击动画与任务同步（后摇阶段等待动画结束+最小后摇时间）
+- ✅ **攻击任务等待冷却结束**：Recovering阶段同时检查动画+后摇+冷却
+- ✅ **攻击完成返回Succeeded**：让行为树正确执行后续逻辑
+- ✅ **防止行为树震荡**：冷却期间不返回，防止目标被清除
+
+**可配置参数**:
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| AttackWindUpTime | 0.3s | 攻击前摇时间（可面向目标，bUseAnimationProgress=false时有效） |
+| AttackRecoveryTime | 0.5s | 最小后摇时间（即使动画结束也要等待此时间） |
+| AttackDamage | 20.0f | 攻击伤害值 |
+| AttackRange | 200.0f | 攻击范围 |
+| AttackAngle | 60.0f | 攻击角度（前方锥形） |
+| RotationSpeed | 5.0f | 面向目标旋转速度 |
+| bUseAnimationProgress | true | 使用动画进度触发伤害 |
+| AttackDamageTriggerPoint | 0.3 | 动画播放到30%时触发伤害（0.0-1.0） |
+
+**EnemyDataAsset 配置**:
+| 参数 | 推荐值 | 说明 |
+|------|--------|------|
+| MinAttackInterval | 1.0f | 最小攻击间隔（秒） |
+| MaxAttackInterval | 2.0f | 最大攻击间隔（秒，实际冷却在这之间随机） |
+
+**攻击流程**:
+1. 检查攻击冷却（CanAttack）→ 冷却中则进入 Recovering 阶段等待
+2. 开始攻击 → 播放攻击动画蒙太奇，启动攻击冷却
+3. 前摇阶段 → 面向目标旋转
+4. 触发伤害 → 根据动画进度或时间触发
+5. 后摇阶段(Recovering) → **同时等待**：
+   - 动画播放完成
+   - 最小后摇时间结束
+   - **攻击冷却结束**（关键！防止行为树切换）
+6. 全部条件满足 → 返回Succeeded
+
+**追击任务流程**:
+1. 获取目标Actor → 开始追击
+2. Tick更新 → 持续移动向目标
+3. 检测目标是否静止（移动距离<10cm）
+4. 静止且进入攻击范围 → 停止移动，返回Succeeded
+5. 目标仍在移动 → 继续追击，保持InProgress
+
+**4.2.6 完成功能**:
+- ✅ 距离检查装饰器 BTDecorator_DistanceCheck
+- ✅ 4种比较模式：小于/大于/范围内/范围外
+- ✅ 支持2D/3D距离切换
+- ✅ 可配置的Blackboard键绑定
+- ✅ 详细的静态描述（编辑器中显示检查条件）
+
+**使用示例**:
+```
+[Sequence]
+  [Decorator: 距离检查 < 攻击距离]
+    [BTTask_Attack]
+  [Decorator: 距离检查 > 最大追击距离]
+    [BTTask_ReturnHome]
+```
+
+**4.2.7 完成功能**:
+- ✅ 目标更新服务 BTService_UpdateTarget
+- ✅ 定期更新目标位置到黑板
+- ✅ 可选更新目标方向向量
+- ✅ 可选更新与目标的距离
+- ✅ 支持2D/3D距离计算
+
+**技术要点**:
+- 服务默认间隔：0.5秒（Interval）
+- 随机偏差：0.1秒（RandomDeviation）避免多个AI同时更新
+
+**4.2.3 完成功能**:
+- ✅ 巡逻任务节点 BTTask_Patrol
+- ✅ 从黑板获取巡逻中心和半径（支持动态配置）
+- ✅ 在巡逻半径内生成随机目标点（10次尝试找到导航网格有效点）
+- ✅ 使用AIController->MoveToLocation进行路径移动
+- ✅ 到达目标点后等待指定时间（WaitTimeAtPoint可配置）
+- ✅ TickTask监控移动状态，自动进入等待阶段
+- ✅ OnTaskFinished清理（停止移动）
+- ✅ 详细日志输出便于调试
+
+**技术要点**:
+- 依赖模块：`NavigationSystem`（需在Build.cs中添加）
+- 随机点生成：`FMath::RandPointInCircle` + `NavSystem->ProjectPointToNavigation`
+- 移动状态检测：`AIController->GetMoveStatus() == EPathFollowingStatus::Type::Idle`
+- Blackboard键访问：`PatrolCenterKey.SelectedKeyName`（注意不是GetSelectedKeyID()）
+
+**Bug修复记录** (2026-03-07):
+1. **感知组件初始化失败**: 原代码依赖父类GetAIPerceptionComponent()返回nullptr，改为显式创建AIPerceptionComponent并SetPerceptionComponent注册
+2. **HomeLocation初始化失败**: 添加SpawnLocation为零的容错处理，使用当前位置作为备选
+3. **黑板Key基类陷阱**: 文档说明Object类型Key必须设置BaseClass为Actor，否则MoveTo任务会忽略
+4. **NavigationSystem链接错误**: 添加NavigationSystem模块到Build.cs的PublicDependencyModuleNames
+5. **攻击只执行一次**: 攻击任务返回Succeeded后Selector不再重新评估，导致无法连续攻击。修复：攻击任务完成后返回Failed（而非Succeeded），强制Selector重新评估攻击条件，实现循环攻击
+
+**Bug修复记录** (2026-03-08):
+6. **攻击任务与追击任务震荡**: 
+   - 攻击任务返回 Failed 导致 Selector 频繁重新评估
+   - 修复：攻击完成后返回 Succeeded，让行为树正常执行
+7. **攻击冷却期间行为树震荡**: 
+   - 攻击冷却期间返回 Failed 导致 Selector 反复切换任务
+   - 修复：攻击任务在 Recovering 阶段等待动画+后摇+冷却都结束才返回
+8. **追击任务目标移动时返回成功**: 
+   - 目标移动时追击任务立即返回成功，导致攻击任务频繁进入退出
+   - 修复：添加目标移动检测，目标静止时才返回成功
+9. **AttackRange默认值不一致**: 
+   - BTTask_ChasePlayer 和 BTTask_Attack 默认值分别为 200 和 200
+   - 修复：统一为 250
+10. **攻击完成后目标被清除**:
+    - 攻击完成后行为树立即切换导致目标清除
+    - 修复：攻击任务等待冷却结束才返回，防止行为树切换
+
+**代码重构记录** (2026-03-07 Phase 2-3):
+
+| 问题 | 解决方案 | 影响文件 |
+|------|----------|----------|
+| **硬编码EnemyAIController依赖** | 移除`#include "AI/EnemyAIController.h"`，使用通用`AAIController` + 常见目标键名数组 | `EnemyStateMachineComponent.cpp` |
+| **LogTemp不规范** | 定义专用日志类别：`LogAIAttack`, `LogAIPatrol`, `LogAIChase` | `BTTask_Attack.cpp`, `BTTask_Patrol.cpp`, `BTTask_ChasePlayer.cpp` |
+| **距离计算不一致** | 统一使用`FVector::Dist2D`（水平距离），添加`bUse3DDistance`配置项 | `BTDecorator_DistanceCheck.cpp`, `BTTask_ChasePlayer.cpp`, `BTTask_Attack.cpp` |
+| **动画回调未绑定** | 在`StartAttack`中使用`Montage_SetEndDelegate`绑定`OnAttackMontageEnded` | `BTTask_Attack.cpp` |
+| **BlackboardKeySelector未初始化** | 在构造函数中调用`AddObjectFilter`/`AddVectorFilter` | 所有BT任务类 |
+| **攻击任务与动画不同步** | 修改后摇阶段逻辑，等待动画播放完成+满足最小后摇时间后才返回Failed（强制Selector重新评估） | `BTTask_Attack.cpp` |
+| **攻击与追击任务震荡** | 攻击任务返回 Succeeded（不是 Failed） | `BTTask_Attack.cpp` |
+| **攻击任务等待冷却** | Recovering 阶段同时检查动画+后摇+冷却，全部结束才返回 | `BTTask_Attack.cpp` |
+| **追击任务目标移动检测** | 添加 LastTargetLocation 成员变量，目标静止时才返回成功 | `BTTask_ChasePlayer.h/cpp` |
+| **AttackRange默认值统一** | BTTask_ChasePlayer 和 BTTask_Attack 的 AttackRange 统一为 250 | `BTTask_ChasePlayer.h`, `BTTask_Attack.h` |
+
+**日志类别使用规范**:
+```cpp
+// AI行为树日志
+DEFINE_LOG_CATEGORY(LogAIAttack);   // BTTask_Attack.cpp
+DEFINE_LOG_CATEGORY(LogAIPatrol);   // BTTask_Patrol.cpp
+DEFINE_LOG_CATEGORY(LogAIChase);    // BTTask_ChasePlayer.cpp
+
+// 使用示例
+UE_LOG(LogAIAttack, Log, TEXT("开始攻击: %s"), *TargetName);
+UE_LOG(LogAIChase, Warning, TEXT("目标丢失"));
+```
+
+**关键修复代码**:
+```cpp
+// 显式创建感知组件
+AIPerceptionComponent = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AIPerceptionComponent"));
+// ... 配置 ...
+SetPerceptionComponent(*AIPerceptionComponent);  // 关键：注册到AI系统
+AIPerceptionComponent->Activate();  // 关键：激活组件
+```
+
+**依赖关系**:
+```
+EnemyAIController (4.2.1) ✅
+    ↓ 依赖
+EnemyBase + EnemyStateMachineComponent (4.1) ✅
+    ↓ 依赖
+BehaviorTree + Blackboard (UE5内置)
+```
 
 ### 4.3 敌人生成器
 
@@ -481,11 +706,22 @@ Source/niuniu555/
     ├── DamageableInterface.h
     └── HitReactionComponent.h/cpp
 └── EnemySystem/
-    ├── EnemyTypes.h
-    ├── EnemyDataAsset.h/cpp
-    ├── DropTableDataAsset.h/cpp
-    ├── EnemyStateMachineComponent.h/cpp
-    └── EnemyBase.h/cpp
+│   ├── EnemyTypes.h
+│   ├── EnemyDataAsset.h/cpp
+│   ├── DropTableDataAsset.h/cpp
+│   ├── EnemyStateMachineComponent.h/cpp
+│   ├── EnemyBase.h/cpp
+│   └── EnemyAIController.h/cpp          【4.2.1 新增】
+└── AI/
+    └── BehaviorTree/
+        ├── Tasks/
+        │   ├── BTTask_Patrol.h/cpp        【4.2.3 新增】
+        │   ├── BTTask_ChasePlayer.h/cpp   【4.2.4 新增】
+        │   └── BTTask_Attack.h/cpp        【4.2.5 新增】
+        ├── Decorators/
+        │   └── BTDecorator_DistanceCheck.h/cpp  【4.2.6 新增】
+        └── Services/
+            └── BTService_UpdateTarget.h/cpp  【4.2.7 新增】
 ```
 
 ---
@@ -531,7 +767,7 @@ Source/niuniu555/
 ---
 
 *最后更新: 2026-03-07*  
-*开发阶段: Phase 4 进行中（敌人与AI系统 - 4.1基础架构完成）*
+*开发阶段: Phase 4 基本完成（敌人与AI系统 - 4.2行为树系统完成）*
 
 
 ---
@@ -721,6 +957,108 @@ Parent: Take Interface Damage(Hit Info)
 1. **BlueprintNativeEvent 陷阱**: 允许蓝图覆盖的接口函数，如果蓝图实现为空或不调用父类，C++实现会被完全跳过
 2. **强制日志验证**: 在关键函数第一行添加 `UE_LOG(Warning)`，用于验证函数是否被调用
 3. **接口设计原则**: 对于核心逻辑（如扣血、死亡），优先使用 `BlueprintCallable` 禁止覆盖，或通过 `Execute_` 强制调用C++实现
+
+### 2026-03-07 - Phase 4.2 AI行为树系统完成
+
+**完成功能**:
+- ✅ **EnemyAIController** (4.2.1): AI控制器基类，感知组件配置，黑板Key管理，目标自动发现
+- ✅ **BTTask_Patrol** (4.2.3): 巡逻任务节点，随机导航点移动，到达等待
+- ✅ **BTTask_ChasePlayer** (4.2.4): 追击任务节点，持续跟随目标，最大追击距离限制
+- ✅ **BTTask_Attack** (4.2.5): 攻击任务节点，前摇-攻击-后摇状态机
+- ✅ **BTDecorator_DistanceCheck** (4.2.6): 距离检查装饰器，4种比较模式
+- ✅ **BTService_UpdateTarget** (4.2.7): 目标更新服务，定期更新目标位置/距离/方向
+
+**修复问题**:
+1. **BTDecorator_DistanceCheck.h EditCondition错误**: `EDistanceMode` → `EDistanceCheckMode`
+2. **BTTask_ChasePlayer追击起始位置**: 优化为优先从黑板读取，在EnemyAIController::OnTargetChanged中统一记录
+3. **BTTask_Patrol导航点生成**: 添加中心点导航投影检查作为后备
+4. **EnemyStateMachineComponent返回逻辑**: 受击/眩晕后智能选择返回状态（Idle/Chase）
+
+**Bug修复 - TickTask目标获取不一致**:
+- **问题**: `TickTask`中使用`SelectedKeyType`判断，但`ExecuteTask`使用3种后备方案获取目标，导致TickTask中判定"目标丢失"而ExecuteTask成功
+- **修复**: 统一`BTTask_ChasePlayer`和`BTTask_Attack`的`TickTask`目标获取逻辑，使用与`ExecuteTask`相同的3种后备方案
+- **关键代码**:
+```cpp
+// 方法1：使用配置KeyName直接获取
+if (!TargetActorKey.SelectedKeyName.IsNone())
+{
+    TargetActor = Cast<AActor>(Blackboard->GetValueAsObject(TargetActorKey.SelectedKeyName));
+}
+
+// 方法2：如果方法1失败，尝试用KeyID获取
+if (!TargetActor && TargetActorKey.GetSelectedKeyID() != FBlackboard::InvalidKey)
+{
+    TargetActor = Cast<AActor>(Blackboard->GetValue<UBlackboardKeyType_Object>(TargetActorKey.GetSelectedKeyID()));
+}
+
+// 方法3：后备方案，直接查找"TargetActor"
+if (!TargetActor)
+{
+    TargetActor = Cast<AActor>(Blackboard->GetValueAsObject(FName(TEXT("TargetActor"))));
+}
+```
+
+**Bug修复 - 距离计算不一致导致无法进入攻击**:
+- **问题**: 追击任务使用`FVector::Dist`(3D距离)，行为树装饰器使用2D距离，当玩家和敌人Z轴有差距时，追击任务判定"进入范围"返回成功，但装饰器判定"不满足条件"，导致攻击任务不执行，AI反复在追击任务中循环
+- **修复**: 统一使用`FVector::Dist2D`(2D距离，忽略Z轴)，与行为树装饰器保持一致
+- **修改文件**: `BTTask_ChasePlayer.cpp`(IsInAttackRange, ShouldAbortChase), `BTTask_Attack.cpp`(IsTargetInAttackRange)
+- **关键代码**:
+```cpp
+// 使用2D距离（忽略Z轴），与行为树装饰器保持一致
+float DistanceToTarget = FVector::Dist2D(AIPawn->GetActorLocation(), TargetActor->GetActorLocation());
+return DistanceToTarget <= AttackRange;
+```
+
+**Bug修复 - TickTask未被调用导致攻击无法执行**:
+- **问题**: `BTTask_Attack`继承自`UBTTask_BlackboardBase`，`ExecuteTask`返回`InProgress`后`TickTask`从未被调用，导致攻击状态机无法推进
+- **根本原因**: `UBTTask_BlackboardBase`可能不支持`TickTask`或其实现覆盖了子类的`TickTask`
+- **修复**: 将基类改为`UBTTaskNode`，并添加`InitializeFromAsset`强制启用`bNotifyTick`
+- **修改文件**: `BTTask_Attack.h`, `BTTask_Attack.cpp`
+- **关键代码**:
+```cpp
+// 头文件：改为继承自 UBTTaskNode
+class NIUNIU555_API UBTTask_Attack : public UBTTaskNode
+
+// CPP文件：强制启用 TickTask
+void UBTTask_Attack::InitializeFromAsset(UBehaviorTree& Asset)
+{
+    Super::InitializeFromAsset(Asset);
+    bNotifyTick = true;  // 强制启用
+}
+```
+
+**Bug修复 - ExecuteTask未被调用问题排查**:
+- **问题**: `InitializeFromAsset`被调用但`ExecuteTask`未被调用，攻击任务完全不执行
+- **诊断方法**: 添加了详细的诊断日志（类名、实例指针），帮助确认：
+  1. 构造函数是否被调用（确认类被实例化）
+  2. InitializeFromAsset的类名和实例指针
+  3. ExecuteTask是否被调用
+- **常见原因**: 
+  - 行为树中使用了蓝图子类而不是C++类
+  - 节点连接错误（Task不是Sequence的直接子节点）
+  - 装饰器条件始终不满足
+- **排查步骤**: 详见`TestGuide_AI_BehaviorTree.md`的"攻击任务执行问题排查"章节
+
+**新增文件**:
+```
+Source/niuniu555/AI/
+├── EnemyAIController.h/cpp
+└── BehaviorTree/
+    ├── Tasks/
+    │   ├── BTTask_Patrol.h/cpp
+    │   ├── BTTask_ChasePlayer.h/cpp
+    │   └── BTTask_Attack.h/cpp
+    ├── Decorators/
+    │   └── BTDecorator_DistanceCheck.h/cpp
+    └── Services/
+        └── BTService_UpdateTarget.h/cpp
+```
+
+**测试文档**: `TestGuide_AI_BehaviorTree.md`
+- 详细的黑板Key配置说明
+- 行为树结构搭建步骤
+- 玩家角色配置（Player标签 + AIPerceptionStimuliSource）
+- 配置检查清单和常见错误排查
 
 ---
 

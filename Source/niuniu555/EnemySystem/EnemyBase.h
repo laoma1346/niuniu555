@@ -8,6 +8,9 @@
 #include "EnemyTypes.h"
 #include "EnemyBase.generated.h"
 
+// 日志分类声明
+DECLARE_LOG_CATEGORY_EXTERN(LogEnemy, Log, All);
+
 // 前置声明组件类
 class UAttributeComponent;
 class UHitReactionComponent;
@@ -146,6 +149,24 @@ public:
     UFUNCTION(BlueprintPure, Category = "敌人|AI")
     FVector GetHomeLocation() const { return SpawnLocation; }
 
+    // ========== 攻击冷却管理 ==========
+
+    // 检查是否可以攻击（冷却是否结束）
+    UFUNCTION(BlueprintPure, Category = "敌人|攻击")
+    bool CanAttack() const;
+
+    // 开始攻击冷却
+    UFUNCTION(BlueprintCallable, Category = "敌人|攻击")
+    void StartAttackCooldown();
+
+    // 获取攻击冷却剩余时间
+    UFUNCTION(BlueprintPure, Category = "敌人|攻击")
+    float GetAttackCooldownRemaining() const { return AttackCooldownTimer; }
+
+    // 是否在攻击冷却中
+    UFUNCTION(BlueprintPure, Category = "敌人|攻击")
+    bool IsInAttackCooldown() const { return bIsInAttackCooldown; }
+
     // ========== 调试 ==========
 
     // 显示调试信息
@@ -194,6 +215,16 @@ protected:
     // 是否正在死亡
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     bool bIsDying;
+
+    // ========== 攻击冷却状态 ==========
+
+    // 攻击冷却计时器
+    UPROPERTY(BlueprintReadOnly, Category = "状态|攻击")
+    float AttackCooldownTimer;
+
+    // 是否在攻击冷却中
+    UPROPERTY(BlueprintReadOnly, Category = "状态|攻击")
+    bool bIsInAttackCooldown;
 
     // ========== 受保护函数 ==========
 

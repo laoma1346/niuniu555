@@ -1,0 +1,70 @@
+========== Kimi Code 常用命令速查表 ==========
+
+【基础命令】
+kimi -h                    查看帮助
+kimi login                 登录账号
+kimi logout                退出登录
+kimi info                  查看当前状态
+
+【启动命令】
+start-kimi.bat             启动Kimi（继续上次会话）
+
+【手动启动（高级）】
+kimi --model "kimi-k2-5" --thinking --agent-file ".kimi\ue5-expert.toml" web
+
+【参数说明】
+--model "kimi-k2-5"        使用最强模型
+--thinking                 启用思考模式
+--agent-file               指定配置文件
+--session "名称"           指定会话名称
+--continue                 继续上次会话
+--yolo                     自动批准（慎用）
+web                        启动Web界面
+
+========== UE5开发专用提示词 ==========
+
+【代码审查】
+请审查这段代码，检查：
+1. 内存安全问题（UPROPERTY, 空指针检查）
+2. UE5宏使用是否正确（UCLASS, UPROPERTY, UFUNCTION）
+3. 是否有潜在bug
+
+【调试帮助】
+我的代码编译报错，错误信息如下：
+[粘贴错误信息]
+请帮我分析原因并给出修复方案。
+
+【功能实现】
+请帮我实现一个[功能名称]，要求：
+1. [具体要求1]
+2. [具体要求2]
+3. 需要与现有[系统名称]系统集成
+
+【Bug修复】
+我的[功能]出现以下问题：
+[问题描述]
+相关代码：
+```cpp
+[粘贴代码]
+```
+请帮我找出原因并修复。
+
+========== UE5开发检查清单 ==========
+
+【创建新类时检查】
+□ 头文件添加了 #pragma once
+□ 类声明添加了 UCLASS()
+□ 继承自正确的父类
+□ 添加了 GENERATED_BODY()
+□ 所有UObject指针添加了 UPROPERTY()
+
+【创建新函数时检查】
+□ 虚函数添加了 override
+□ 蓝图可调用的函数添加了 UFUNCTION(BlueprintCallable)
+□ 函数参数类型正确
+
+【修改代码后检查】
+□ 编译是否通过
+□ 是否有警告信息
+□ 运行时是否崩溃
+□ 日志输出是否符合预期

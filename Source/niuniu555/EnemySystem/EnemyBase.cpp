@@ -9,6 +9,9 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 
+// 定义EnemyBase日志类别
+DEFINE_LOG_CATEGORY(LogEnemy);
+
 AEnemyBase::AEnemyBase(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
@@ -29,6 +32,10 @@ AEnemyBase::AEnemyBase(const FObjectInitializer& ObjectInitializer)
     bIsDying = false;
     bShowDebugInfo = false;
 
+    // 攻击冷却初始化
+    AttackCooldownTimer = 0.0f;
+    bIsInAttackCooldown = false;
+
     // 设置自动 possess AI
     AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
@@ -45,7 +52,7 @@ void AEnemyBase::BeginPlay()
 {
     Super::BeginPlay();
 
-    UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s BeginPlay 开始初始化"), *GetName());
+    UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s BeginPlay 开始初始化"), *GetName());
 
     // 记录出生位置
     SpawnLocation = GetActorLocation();
@@ -53,13 +60,13 @@ void AEnemyBase::BeginPlay()
     // 检查关键组件
     if (!AttributeComp)
     {
-        UE_LOG(LogTemp, Error, TEXT("[EnemyBase] %s AttributeComp is NULL! 敌人无法正常工作"), *GetName());
+        UE_LOG(LogEnemy, Error, TEXT("[EnemyBase] %s AttributeComp is NULL! 敌人无法正常工作"), *GetName());
         return;
     }
 
     if (!StateMachineComp)
     {
-        UE_LOG(LogTemp, Error, TEXT("[EnemyBase] %s StateMachineComp is NULL!"), *GetName());
+        UE_LOG(LogEnemy, Error, TEXT("[EnemyBase] %s StateMachineComp is NULL!"), *GetName());
     }
 
     // 如果有数据资产，自动初始化
@@ -69,7 +76,7 @@ void AEnemyBase::BeginPlay()
     }
     else if (!EnemyData)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[EnemyBase] %s EnemyData未设置，使用默认血量100"), *GetName());
+        UE_LOG(LogEnemy, Warning, TEXT("[EnemyBase] %s EnemyData未设置，使用默认血量100"), *GetName());
         // 使用默认属性
         AttributeComp->SetBaseValue(EAttributeType::MaxHealth, 100.0f);
         AttributeComp->SetBaseValue(EAttributeType::Health, 100.0f);
@@ -86,7 +93,7 @@ void AEnemyBase::BeginPlay()
     if (AttributeComp)
     {
         AttributeComp->OnHealthChanged.AddDynamic(this, &AEnemyBase::OnHealthChanged);
-        UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 已绑定血量变化事件"), *GetName());
+        UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 已绑定血量变化事件"), *GetName());
     }
 
     // ===== 关键修复：确保血量不为0（防止IsAlive()返回false导致无法受伤）=====
@@ -95,7 +102,7 @@ void AEnemyBase::BeginPlay()
         float CurrentHealth = AttributeComp->GetHealth();
         float MaxHealth = AttributeComp->GetMaxHealth();
         
-        UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 血量检查 - 当前:%.0f 最大:%.0f"), 
+        UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 血量检查 - 当前:%.0f 最大:%.0f"), 
             *GetName(), CurrentHealth, MaxHealth);
         
         // 如果当前血量为0或未初始化
@@ -106,19 +113,19 @@ void AEnemyBase::BeginPlay()
             {
                 MaxHealth = 100.0f;
                 AttributeComp->SetBaseValue(EAttributeType::MaxHealth, MaxHealth);
-                UE_LOG(LogTemp, Warning, TEXT("[EnemyBase] %s MaxHealth为0，强制设为100"), *GetName());
+                UE_LOG(LogEnemy, Warning, TEXT("[EnemyBase] %s MaxHealth为0，强制设为100"), *GetName());
             }
             
             // 设置当前血量 = 最大生命值
             AttributeComp->SetBaseValue(EAttributeType::Health, MaxHealth);
-            UE_LOG(LogTemp, Warning, TEXT("[EnemyBase] %s CurrentHealth为0，强制初始化为:%.0f"), 
+            UE_LOG(LogEnemy, Warning, TEXT("[EnemyBase] %s CurrentHealth为0，强制初始化为:%.0f"), 
                 *GetName(), MaxHealth);
         }
     }
     // ==================================================================
 
     // 输出最终初始化状态
-    UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 初始化完成 - 最终血量:%.0f/%.0f"), 
+    UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 初始化完成 - 最终血量:%.0f/%.0f"), 
         *GetName(), GetCurrentHealth(), GetMaxHealth());
 }
 
@@ -126,14 +133,28 @@ void AEnemyBase::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    // 更新攻击冷却
+    if (bIsInAttackCooldown)
+    {
+        AttackCooldownTimer -= DeltaTime;
+        if (AttackCooldownTimer <= 0.0f)
+        {
+            AttackCooldownTimer = 0.0f;
+            bIsInAttackCooldown = false;
+            UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 攻击冷却结束"), *GetName());
+        }
+    }
+
     // 调试信息显示
     if (bShowDebugInfo && bInitialized)
     {
-        FString DebugInfo = FString::Printf(TEXT("[%s] HP:%.0f/%.0f | State:%s"),
+        FString CooldownInfo = bIsInAttackCooldown ? FString::Printf(TEXT(" | CD:%.1f"), AttackCooldownTimer) : TEXT("");
+        FString DebugInfo = FString::Printf(TEXT("[%s] HP:%.0f/%.0f | State:%s%s"),
             *GetName(),
             GetCurrentHealth(),
             GetMaxHealth(),
-            *UEnum::GetValueAsString(GetCurrentState()));
+            *UEnum::GetValueAsString(GetCurrentState()),
+            *CooldownInfo);
         
         DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100), DebugInfo, nullptr, FColor::White, 0.0f);
     }
@@ -148,7 +169,7 @@ void AEnemyBase::InitializeFromDataAsset(UEnemyDataAsset* DataAsset, int32 Chapt
 {
     if (!DataAsset)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[EnemyBase] 初始化失败：数据资产为空"));
+        UE_LOG(LogEnemy, Warning, TEXT("[EnemyBase] 初始化失败：数据资产为空"));
         return;
     }
 
@@ -194,7 +215,7 @@ void AEnemyBase::InitializeFromDataAsset(UEnemyDataAsset* DataAsset, int32 Chapt
     // 调用蓝图事件
     BP_OnInitialized();
 
-    UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 初始化完成 - 章节:%d"), *GetName(), CurrentChapter);
+    UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 初始化完成 - 章节:%d"), *GetName(), CurrentChapter);
 }
 
 void AEnemyBase::SetChapter(int32 NewChapter)
@@ -230,7 +251,7 @@ void AEnemyBase::UpdateAttributeStats()
     // 设置移动速度
     AttributeComp->SetBaseValue(EAttributeType::MoveSpeed, EnemyData->BaseMoveSpeed);
 
-    UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 属性更新 - HP:%.0f/%.0f ATK:%.0f DEF:%.0f"),
+    UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 属性更新 - HP:%.0f/%.0f ATK:%.0f DEF:%.0f"),
         *GetName(), AttributeComp->GetHealth(), AttributeComp->GetMaxHealth(), Attack, Defense);
 }
 
@@ -283,44 +304,44 @@ bool AEnemyBase::CanBeDamaged_Implementation() const
 float AEnemyBase::TakeDamage_Implementation(const FHitInfo& HitInfo)
 {
     // 【强制日志】确保只要进函数就能看到，用于调试
-    UE_LOG(LogTemp, Warning, TEXT("【扣血函数进入】敌人:%s, 伤害:%.0f"), 
+    UE_LOG(LogEnemy, Warning, TEXT("【扣血函数进入】敌人:%s, 伤害:%.0f"), 
         *GetName(), HitInfo.Damage);
     
-    UE_LOG(LogTemp, Warning, TEXT("【扣血函数】当前血量:%.0f, IsAlive:%d"), 
+    UE_LOG(LogEnemy, Warning, TEXT("【扣血函数】当前血量:%.0f, IsAlive:%d"), 
         GetCurrentHealth(), IsAlive());
 
     if (!IsAlive())
     {
-        UE_LOG(LogTemp, Error, TEXT("【EnemyBase】%s IsAlive=false, 无法受伤! 当前血量:%.0f"), 
+        UE_LOG(LogEnemy, Error, TEXT("【EnemyBase】%s IsAlive=false, 无法受伤! 当前血量:%.0f"), 
             *GetName(), GetCurrentHealth());
         return 0.0f;
     }
 
     if (!CanBeDamaged())
     {
-        UE_LOG(LogTemp, Warning, TEXT("【EnemyBase】%s 当前状态无法受伤"), *GetName());
+        UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 当前状态无法受伤"), *GetName());
         return 0.0f;
     }
 
     // 计算实际伤害
     float ActualDamage = CalculateActualDamage(HitInfo);
-    UE_LOG(LogTemp, Log, TEXT("【EnemyBase】%s 计算后实际伤害:%.0f"), *GetName(), ActualDamage);
+    UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 计算后实际伤害:%.0f"), *GetName(), ActualDamage);
 
     // 应用伤害到属性组件（负数表示伤害）
     float HealthBefore = GetCurrentHealth();
     if (AttributeComp)
     {
-        UE_LOG(LogTemp, Log, TEXT("【EnemyBase】%s 准备扣血: %.0f - %.0f"), 
+        UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 准备扣血: %.0f - %.0f"), 
             *GetName(), HealthBefore, ActualDamage);
         
         AttributeComp->ModifyHealth(-ActualDamage);
         
-        UE_LOG(LogTemp, Warning, TEXT("【EnemyBase】%s 血量变化: %.0f -> %.0f"), 
+        UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s 血量变化: %.0f -> %.0f"), 
             *GetName(), HealthBefore, GetCurrentHealth());
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("【EnemyBase】%s AttributeComp is NULL! 无法扣血!"), *GetName());
+        UE_LOG(LogEnemy, Error, TEXT("【EnemyBase】%s AttributeComp is NULL! 无法扣血!"), *GetName());
     }
 
     // 触发受击反应
@@ -332,16 +353,16 @@ float AEnemyBase::TakeDamage_Implementation(const FHitInfo& HitInfo)
         if (HitInfo.HitReaction == EHitReactionType::Stun)
         {
             StateMachineComp->StartStun();
-            UE_LOG(LogTemp, Log, TEXT("【EnemyBase】%s 进入眩晕状态"), *GetName());
+            UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 进入眩晕状态"), *GetName());
         }
         else if (HitInfo.HitReaction != EHitReactionType::None)
         {
             StateMachineComp->StartHit();
-            UE_LOG(LogTemp, Log, TEXT("【EnemyBase】%s 进入受击状态"), *GetName());
+            UE_LOG(LogEnemy, Log, TEXT("【EnemyBase】%s 进入受击状态"), *GetName());
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("【EnemyBase】%s HitReaction为None，不进入受击状态"), *GetName());
+            UE_LOG(LogEnemy, Warning, TEXT("【EnemyBase】%s HitReaction为None，不进入受击状态"), *GetName());
         }
     }
 
@@ -352,7 +373,7 @@ float AEnemyBase::TakeDamage_Implementation(const FHitInfo& HitInfo)
     // 检查死亡
     if (GetCurrentHealth() <= 0 && !bIsDying)
     {
-        UE_LOG(LogTemp, Error, TEXT("【EnemyBase】%s 血量归零，执行死亡"), *GetName());
+        UE_LOG(LogEnemy, Error, TEXT("【EnemyBase】%s 血量归零，执行死亡"), *GetName());
         Die();
     }
 
@@ -627,7 +648,7 @@ void AEnemyBase::SetTarget(AActor* NewTarget)
 void AEnemyBase::OnHealthChanged(float CurrentHealth, float MaxHealth, float Delta)
 {
     // 血量变化处理（关键回调）
-    UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 血量变化: %.0f/%.0f (变化: %+.0f)"), 
+    UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 血量变化: %.0f/%.0f (变化: %+.0f)"), 
         *GetName(), CurrentHealth, MaxHealth, Delta);
 
     // 触发受击反馈（如果是受到伤害，即Delta为负）
@@ -640,13 +661,13 @@ void AEnemyBase::OnHealthChanged(float CurrentHealth, float MaxHealth, float Del
         HitInfo.HitDirection = -GetActorForwardVector(); // 假设来自正面
         
         HitReactionComp->ProcessHitReaction(HitInfo);
-        UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 触发受击反馈"), *GetName());
+        UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 触发受击反馈"), *GetName());
     }
 
     // 检查血量归零，触发死亡
     if (CurrentHealth <= 0.0f && !bIsDying)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[EnemyBase] %s 血量归零，触发死亡"), *GetName());
+        UE_LOG(LogEnemy, Warning, TEXT("[EnemyBase] %s 血量归零，触发死亡"), *GetName());
         Die();
     }
 }
@@ -654,7 +675,7 @@ void AEnemyBase::OnHealthChanged(float CurrentHealth, float MaxHealth, float Del
 void AEnemyBase::OnStateChanged(EEnemyState OldState, EEnemyState NewState)
 {
     // 状态变更时的处理
-    UE_LOG(LogTemp, Log, TEXT("[EnemyBase] %s 状态变更: %s -> %s"),
+    UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 状态变更: %s -> %s"),
         *GetName(),
         *UEnum::GetValueAsString(OldState),
         *UEnum::GetValueAsString(NewState));
@@ -663,4 +684,52 @@ void AEnemyBase::OnStateChanged(EEnemyState OldState, EEnemyState NewState)
 void AEnemyBase::OnHitReactionReceived(const FHitInfo& HitInfo)
 {
     // 受击反应处理
+}
+
+// ========== 攻击冷却管理 ==========
+
+bool AEnemyBase::CanAttack() const
+{
+    // 检查是否在冷却中
+    if (bIsInAttackCooldown)
+    {
+        return false;
+    }
+    
+    // 检查状态机是否允许攻击
+    if (StateMachineComp && !StateMachineComp->CanAttack())
+    {
+        return false;
+    }
+    
+    return true;
+}
+
+void AEnemyBase::StartAttackCooldown()
+{
+    float BaseCooldown = 1.0f; // 默认1秒
+    if (EnemyData)
+    {
+        BaseCooldown = EnemyData->GetRandomAttackInterval();
+    }
+    
+    // 考虑攻击速度倍率的影响（攻击速度越快，冷却时间越短）
+    float AttackSpeedMultiplier = 1.0f;
+    if (EnemyData)
+    {
+        AttackSpeedMultiplier = EnemyData->AttackSpeedMultiplier;
+    }
+    
+    // 确保攻击速度倍率大于0
+    if (AttackSpeedMultiplier > 0.0f)
+    {
+        AttackCooldownTimer = BaseCooldown / AttackSpeedMultiplier;
+    }
+    else
+    {
+        AttackCooldownTimer = BaseCooldown;
+    }
+    
+    bIsInAttackCooldown = true;
+    UE_LOG(LogEnemy, Log, TEXT("[EnemyBase] %s 开始攻击冷却: %.2f秒 (攻击速度倍率: %.2f)"), *GetName(), AttackCooldownTimer, AttackSpeedMultiplier);
 }
