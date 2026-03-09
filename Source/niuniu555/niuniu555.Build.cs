@@ -27,6 +27,7 @@ public class niuniu555 : ModuleRules
 
 		PublicIncludePaths.AddRange(new string[] {
 			"niuniu555",
+			"niuniu555/EquipmentSystem",
 			"niuniu555/Public",
 			"niuniu555/Public/AI",
 			"niuniu555/AI",

@@ -4,18 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "DropItemBase.h"
+#include "EquipmentSystem/EquipmentTypes.h"
 #include "EquipmentDropItem.generated.h"
-
-/** 装备品质枚举 */
-UENUM(BlueprintType)
-enum class EEquipmentQuality : uint8
-{
-    Common      UMETA(DisplayName = "普通"),     // 白色
-    Uncommon    UMETA(DisplayName = "优秀"),     // 蓝色
-    Rare        UMETA(DisplayName = "稀有"),     // 金色
-    Epic        UMETA(DisplayName = "史诗"),     // 暗金
-    Legendary   UMETA(DisplayName = "传说")      // 神话
-};
 
 /**
  * 装备掉落物 - 玩家拾取后获得装备

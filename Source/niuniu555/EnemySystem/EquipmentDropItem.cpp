@@ -7,6 +7,9 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
+#include "EquipmentSystem/EquipmentBase.h"
+#include "EquipmentSystem/InventoryComponent.h"
+#include "EquipmentSystem/EquipmentDataAsset.h"
 
 AEquipmentDropItem::AEquipmentDropItem(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -113,11 +116,35 @@ void AEquipmentDropItem::OnPickup_Implementation(APawn* Player)
 
 void AEquipmentDropItem::ApplyEquipmentToPlayer_Implementation(APawn* Player, EEquipmentQuality InQuality)
 {
-    // 基础实现：输出日志
-    // 实际项目中应该调用玩家的装备系统
-    UE_LOG(LogDropItem, Log, TEXT("[EquipmentDropItem] 向玩家 %s 添加 %s 品质装备（需要在子类或蓝图中实现具体逻辑）"),
+    UE_LOG(LogDropItem, Log, TEXT("[EquipmentDropItem] 向玩家 %s 添加 %s 品质装备"),
         *Player->GetName(), *UEnum::GetValueAsString(InQuality));
 
-    // TODO: 调用玩家的装备系统
-    // 例如：PlayerState->AddEquipment(InQuality);
+    // 【衔接装备系统】获取玩家背包组件并添加装备
+    if (Player)
+    {
+        UInventoryComponent* Inventory = Player->FindComponentByClass<UInventoryComponent>();
+        if (Inventory)
+        {
+            // 【注意】这里简化处理：根据品质随机生成一个测试装备
+            // 实际项目中应该从配置表读取装备DataAsset并生成
+            // 1. 生成测试装备数据资产引用（实际应该在蓝图中配置）
+            // 2. 使用工厂方法生成装备Actor
+            // 3. 添加到背包
+            
+            UE_LOG(LogDropItem, Log, TEXT("[EquipmentDropItem] 找到玩家背包，准备添加 %s 品质装备"),
+                *UEnum::GetValueAsString(InQuality));
+            
+            // TODO: 从配置表获取对应品质的EquipmentDataAsset并生成装备
+            // AEquipmentBase* NewEquipment = AEquipmentBase::SpawnEquipmentFromDataAsset(
+            //     this, EquipmentDataAsset, Player->GetActorLocation());
+            // if (NewEquipment)
+            // {
+            //     Inventory->AddItem(NewEquipment, 1);
+            // }
+        }
+        else
+        {
+            UE_LOG(LogDropItem, Warning, TEXT("[EquipmentDropItem] 玩家 %s 没有背包组件"), *Player->GetName());
+        }
+    }
 }
